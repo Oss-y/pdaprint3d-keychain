@@ -343,9 +343,9 @@ function buildMailto(req){
   if (req.phone) lines.push(`Telefon: ${req.phone}`);
   lines.push("");
   lines.push("Sipariş edilen ürünler:");
-  req.items.forEach(it => lines.push(`- ${it.qty} adet  ${it.isim}  (${it.kod})`));
+  req.items.forEach(it => lines.push(`${it.kod}   ${it.isim}   ${it.qty} adet`));
+  lines.push("");
   if (req.note){
-    lines.push("");
     lines.push(`Not: ${req.note}`);
   }
   const subject = `Yeni Sipariş - ${req.name}`;
