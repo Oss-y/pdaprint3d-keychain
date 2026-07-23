@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<title>PDAprint 3d - Takip Paneli</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PDA Takip">
+<meta name="theme-color" content="#e0dacb">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Indie+Flower&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #e0dacb;
+    --surface: #f2eee1;
+    --surface-2: #e8e2d2;
+    --line: #cfc7b2;
+    --ink: #2b2a24;
+    --ink-dim: #7a7461;
+    --orange: #ff5a36;
+    --green: #46785e;
+    --red: #c1503f;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:'Inter', sans-serif; min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{ max-width:760px; margin:0 auto; padding-bottom:90px; min-height:100vh; position:relative; }
+  input, textarea, button, select{ font-family:inherit; }
+
+  /* ===== Login ===== */
+  .login-wrap{
+    min-height:100vh; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; padding:32px;
+  }
+  .login-title{ font-family:'Indie Flower'; font-size:40px; margin-bottom:6px; }
+  .login-sub{ color:var(--ink-dim); font-size:13px; margin-bottom:28px; }
+  .field{ width:100%; max-width:320px; margin-bottom:14px; }
+  .field label{ display:block; font-size:12px; color:var(--ink-dim); margin-bottom:6px; font-family:'JetBrains Mono'; }
+  .field input{
+    width:100%; background:var(--surface); border:1px solid var(--line);
+    border-radius:10px; padding:12px 14px; color:var(--ink); font-size:14.5px; outline:none;
+  }
+  .field input:focus{ border-color:var(--green); }
+  .btn{
+    background:var(--green); color:var(--bg); border:none; border-radius:12px;
+    padding:14px 28px; font-weight:700; font-size:15px; cursor:pointer; width:100%; max-width:320px;
+  }
+  .btn:hover{ filter:brightness(1.08); }
+  .btn.secondary{ background:var(--surface-2); color:var(--ink); border:1px solid var(--line); font-weight:600; }
+  .btn.danger{ background:var(--red); color:#fff; }
+  .err{ color:var(--red); font-size:12.5px; margin-top:2px; margin-bottom:10px; max-width:320px; }
+
+  /* ===== Header / Tabs ===== */
+  header.top{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 20px 10px;
+  }
+  .brand-mini{ font-family:'Indie Flower'; font-size:24px; }
+  .logout-btn{
+    font-family:'JetBrains Mono'; font-size:11px; color:var(--ink-dim);
+    background:none; border:1px solid var(--line); border-radius:20px;
+    padding:6px 12px; cursor:pointer;
+  }
+  .tabbar{
+    display:flex; gap:6px; padding:4px 20px 14px; overflow-x:auto;
+  }
+  .tab-btn{
+    flex-shrink:0; background:var(--surface); border:1px solid var(--line);
+    color:var(--ink-dim); font-size:12.5px; font-weight:600;
+    padding:9px 14px; border-radius:20px; cursor:pointer; white-space:nowrap;
+  }
+  .tab-btn.active{ background:var(--green); color:var(--bg); border-color:var(--green); }
+
+  main{ padding:6px 20px 20px; }
+  .section-title{ font-family:'Indie Flower'; font-size:24px; margin-bottom:14px; }
+  .empty-msg{ padding:40px 10px; text-align:center; color:var(--ink-dim); font-size:14px; }
+
+  /* ===== Orders ===== */
+  .order-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:16px; margin-bottom:12px;
+  }
+  .order-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px; }
+  .order-emp{ font-family:'Indie Flower'; font-size:19px; }
+  .order-date{ font-family:'JetBrains Mono'; font-size:10.5px; color:var(--ink-dim); margin-top:2px; }
+  .status-pill{
+    font-family:'JetBrains Mono'; font-size:11px; font-weight:600; padding:6px 12px;
+    border-radius:20px; border:none; cursor:pointer; flex-shrink:0;
+  }
+  .status-pill.yeni{ background:var(--orange); color:#17181c; }
+  .status-pill.tamamlandi{ background:var(--green); color:var(--bg); }
+  .order-items{ font-size:13.5px; line-height:1.8; margin-bottom:6px; }
+  .order-items b{ font-family:'JetBrains Mono'; color:var(--green); }
+  .order-note{ font-size:12.5px; color:var(--ink-dim); font-style:italic; }
+
+  /* ===== Stock ===== */
+  .stock-row{
+    display:flex; align-items:center; gap:12px; padding:12px 0;
+    border-bottom:1px dashed var(--line);
+  }
+  .stock-row:last-child{ border-bottom:none; }
+  .stock-info{ flex:1; min-width:0; }
+  .stock-kod{ font-family:'JetBrains Mono'; font-size:10px; color:var(--ink-dim); }
+  .stock-name{ font-family:'Indie Flower'; font-size:17px; }
+  .stock-input{
+    width:70px; text-align:center; background:var(--surface); border:1px solid var(--line);
+    border-radius:8px; padding:8px 6px; color:var(--ink); font-family:'JetBrains Mono'; font-size:13px;
+  }
+  .stock-input.low{ border-color:var(--red); color:var(--red); }
+
+  /* ===== Summary lists (sales/production) ===== */
+  .summary-row{
+    display:flex; align-items:center; gap:12px; padding:11px 0;
+    border-bottom:1px dashed var(--line);
+  }
+  .summary-row:last-child{ border-bottom:none; }
+  .summary-rank{ font-family:'JetBrains Mono'; font-size:11px; color:var(--ink-dim); width:22px; flex-shrink:0; }
+  .summary-name{ flex:1; font-family:'Indie Flower'; font-size:17px; }
+  .summary-bar-wrap{ flex:1; height:8px; background:var(--surface-2); border-radius:4px; overflow:hidden; margin:0 10px; }
+  .summary-bar{ height:100%; background:var(--green); border-radius:4px; }
+  .summary-count{ font-family:'JetBrains Mono'; font-size:13px; font-weight:600; width:34px; text-align:right; flex-shrink:0; }
+
+  /* ===== Catalog ===== */
+  .catalog-form{
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:16px; margin-bottom:18px;
+  }
+  .form-row{ display:flex; gap:10px; margin-bottom:10px; }
+  .form-row input{
+    flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px;
+    padding:10px 12px; color:var(--ink); font-size:13.5px; outline:none; min-width:0;
+  }
+  .form-row input:focus{ border-color:var(--green); }
+  .catalog-row{
+    display:flex; align-items:center; gap:10px; padding:11px 0;
+    border-bottom:1px dashed var(--line);
+  }
+  .catalog-row:last-child{ border-bottom:none; }
+  .catalog-row input.name-edit{
+    flex:1; background:none; border:none; font-family:'Indie Flower'; font-size:16px;
+    color:var(--ink); outline:none; border-bottom:1px dashed transparent; min-width:0;
+  }
+  .catalog-row input.name-edit:focus{ border-bottom-color:var(--green); }
+  .del-btn{
+    background:none; border:none; color:var(--red); font-size:16px; cursor:pointer; padding:4px 6px; flex-shrink:0;
+  }
+  .seed-btn{
+    display:block; margin:0 0 18px; font-family:'JetBrains Mono'; font-size:11.5px;
+    color:var(--ink-dim); background:none; border:1px dashed var(--line); border-radius:10px;
+    padding:10px; cursor:pointer; width:100%; text-align:center;
+  }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:var(--ink); color:var(--bg); padding:10px 18px; border-radius:20px;
+    font-size:12.5px; z-index:50;
+  }
+  .spinner{ text-align:center; padding:60px 0; color:var(--ink-dim); font-family:'JetBrains Mono'; font-size:12px; }
+</style>
+</head>
+<body>
+<div id="app"><div class="spinner">Yükleniyor...</div></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore, collection, doc, setDoc, updateDoc, deleteDoc,
+  onSnapshot, query, orderBy, serverTimestamp, getDocs
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAGc2cGboQRc31H88CAMXZReLKlPMZ-GGc",
+  authDomain: "pdaprint3d.firebaseapp.com",
+  projectId: "pdaprint3d",
+  storageBucket: "pdaprint3d.firebasestorage.app",
+  messagingSenderId: "203482048670",
+  appId: "1:203482048670:web:38a68d329e2e72123f338f",
+};
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
+
+const EMAIL_DOMAIN = "@pdaprint3d.local";
+const IMAGE_BASE = "https://raw.githubusercontent.com/Oss-y/pdaprint3d-keychain/main/";
+
+const SEED_CATALOG = [
+  {kod:"ANH001", isim:"Batman"},{kod:"ANH002", isim:"İskelet"},{kod:"ANH003", isim:"Neşeli Dino"},
+  {kod:"ANH004", isim:"Demorgon"},{kod:"ANH005", isim:"Kurabiye Adam"},{kod:"ANH006", isim:"Winnie the Pooh"},
+  {kod:"ANH007", isim:"Yeni Rakı"},{kod:"ANH008", isim:"Ejderha"},{kod:"ANH009", isim:"Spider-Man"},
+  {kod:"ANH010", isim:"Stitch"},{kod:"ANH011", isim:"Hello Kitty"},{kod:"ANH012", isim:"Hulk"},
+  {kod:"ANH013", isim:"Minions"},{kod:"ANH014", isim:"Darwin"},{kod:"ANH015", isim:"Bart Simpson"},
+  {kod:"ANH016", isim:"Spongebob"},{kod:"ANH017", isim:"Smurf"},{kod:"ANH018", isim:"Yorkshire Terrier"},
+  {kod:"ANH019", isim:"Tazmanya Canavarı"},{kod:"ANH020", isim:"Piglet"},{kod:"ANH021", isim:"Dachshund Dog"},
+  {kod:"ANH022", isim:"Tom"},{kod:"ANH023", isim:"Daffy"},{kod:"ANH024", isim:"Easter Bunny"},
+  {kod:"ANH025", isim:"Donald"},{kod:"ANH026", isim:"Mickey"},{kod:"ANH027", isim:"Garfield"},
+  {kod:"ANH028", isim:"Kaz"},{kod:"ANH029", isim:"Nazar Boncuğu"},{kod:"ANH030", isim:"GS Forma"},
+  {kod:"ANH031", isim:"FB Forma"},{kod:"ANH032", isim:"BJK Forma"},{kod:"ANH033", isim:"Armut"},
+  {kod:"ANH034", isim:"Ahtapot"},{kod:"ANH035", isim:"Groot"},{kod:"ANH036", isim:"Pikachu"},
+  {kod:"ANH037", isim:"Skullman"},{kod:"ANH038", isim:"Lip Balm"},{kod:"ANH039", isim:"Perry"},
+  {kod:"ANH040", isim:"Pizza Dilim"},{kod:"ANH041", isim:"Hıcks"},{kod:"ANH042", isim:"Mr. Creeper"},
+  {kod:"ANH043", isim:"GYM"},{kod:"ANH044", isim:"Coffee-to-go"},{kod:"ANH045", isim:"Goku"},
+  {kod:"ANH046", isim:"Rumi"},{kod:"ANH047", isim:"Jesus"},{kod:"ANH048", isim:"Jimin"},
+  {kod:"ANH049", isim:"Bingo"},{kod:"ANH050", isim:"Bluey"},{kod:"ANH051", isim:"Altın Melek"},
+  {kod:"ANH055", isim:"Gumball"},{kod:"ANH056", isim:"Olaf"},{kod:"ANH057", isim:"Richard Watterson"},
+];
+
+let state = {
+  user: null,
+  authChecked: false,
+  tab: "orders", // orders | stock | sales | production | catalog
+  orders: [],
+  products: [],
+  loadingOrders: true,
+  loadingProducts: true,
+};
+
+const root = document.getElementById("app");
+let unsubOrders = null, unsubProducts = null;
+
+function toast(msg){
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2200);
+}
+
+/* ================= AUTH ================= */
+onAuthStateChanged(auth, (user)=>{
+  state.user = user;
+  state.authChecked = true;
+  if (user){
+    startListeners();
+  } else {
+    if (unsubOrders) unsubOrders();
+    if (unsubProducts) unsubProducts();
+    state.orders = []; state.products = [];
+  }
+  render();
+});
+
+function startListeners(){
+  state.loadingOrders = true;
+  state.loadingProducts = true;
+  const ordersQ = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+  unsubOrders = onSnapshot(ordersQ, snap=>{
+    state.orders = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    state.loadingOrders = false;
+    render();
+  }, err=>{ console.error(err); state.loadingOrders = false; render(); });
+
+  const productsQ = query(collection(db, "products"), orderBy("kod"));
+  unsubProducts = onSnapshot(productsQ, snap=>{
+    state.products = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    state.loadingProducts = false;
+    render();
+  }, err=>{ console.error(err); state.loadingProducts = false; render(); });
+}
+
+/* ================= RENDER: LOGIN ================= */
+function renderLogin(){
+  root.innerHTML = `
+    <div class="login-wrap">
+      <div class="login-title">PDAprint 3d</div>
+      <div class="login-sub">Takip Paneli</div>
+      <div class="field"><label>Kullanıcı Adı</label><input id="li-user" autocapitalize="off" autocorrect="off"></div>
+      <div class="field"><label>Şifre</label><input id="li-pass" type="password"></div>
+      <div class="err" id="li-err"></div>
+      <button class="btn" id="li-submit">Giriş Yap</button>
+    </div>
+  `;
+  const doLogin = async ()=>{
+    const u = document.getElementById("li-user").value.trim().toLowerCase();
+    const p = document.getElementById("li-pass").value;
+    const errEl = document.getElementById("li-err");
+    if (!u || !p){ errEl.textContent = "Kullanıcı adı ve şifre gerekli."; return; }
+    const btn = document.getElementById("li-submit");
+    btn.disabled = true; btn.textContent = "Giriş yapılıyor...";
+    try{
+      await signInWithEmailAndPassword(auth, u + EMAIL_DOMAIN, p);
+    }catch(e){
+      errEl.textContent = "Kullanıcı adı veya şifre hatalı.";
+      btn.disabled = false; btn.textContent = "Giriş Yap";
+    }
+  };
+  document.getElementById("li-submit").addEventListener("click", doLogin);
+  document.getElementById("li-pass").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+}
+
+/* ================= RENDER: SHELL + TABS ================= */
+function renderShell(){
+  const tabs = [
+    {key:"orders", label:"Siparişler"},
+    {key:"stock", label:"Stok"},
+    {key:"sales", label:"Satış Özeti"},
+    {key:"production", label:"Üretim Özeti"},
+    {key:"catalog", label:"Katalog"},
+  ];
+  root.innerHTML = `
+    <header class="top">
+      <div class="brand-mini">PDAprint 3d</div>
+      <button class="logout-btn" id="logout-btn">Çıkış</button>
+    </header>
+    <div class="tabbar">
+      ${tabs.map(t=>`<button class="tab-btn ${state.tab===t.key?'active':''}" data-tab="${t.key}">${t.label}</button>`).join("")}
+    </div>
+    <main id="tab-content"></main>
+  `;
+  document.getElementById("logout-btn").addEventListener("click", ()=>signOut(auth));
+  root.querySelectorAll(".tab-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ state.tab = btn.dataset.tab; render(); });
+  });
+  const content = document.getElementById("tab-content");
+  if (state.tab === "orders") renderOrders(content);
+  else if (state.tab === "stock") renderStock(content);
+  else if (state.tab === "sales") renderSales(content);
+  else if (state.tab === "production") renderProduction(content);
+  else if (state.tab === "catalog") renderCatalog(content);
+}
+
+/* ================= TAB: ORDERS ================= */
+function renderOrders(content){
+  if (state.loadingOrders){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  content.innerHTML = `
+    <div class="section-title">Gelen Siparişler</div>
+    ${state.orders.length===0 ? `<div class="empty-msg">Henüz sipariş yok.</div>` : state.orders.map(o=>{
+      const dt = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate() : new Date();
+      const isDone = o.status === "Tamamlandı";
+      return `
+        <div class="order-card">
+          <div class="order-top">
+            <div>
+              <div class="order-emp">${o.employee || "Bilinmiyor"}</div>
+              <div class="order-date">${dt.toLocaleString('tr-TR')}</div>
+            </div>
+            <button class="status-pill ${isDone?'tamamlandi':'yeni'}" data-id="${o.id}" data-status="${o.status||'Yeni'}">${o.status || "Yeni"}</button>
+          </div>
+          <div class="order-items">
+            ${(o.items||[]).map(it=>`<b>${it.qty}×</b> ${it.isim} (${it.kod})<br>`).join("")}
+          </div>
+          ${o.note ? `<div class="order-note">"${o.note}"</div>` : ""}
+        </div>`;
+    }).join("")}
+  `;
+  content.querySelectorAll(".status-pill").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const newStatus = btn.dataset.status === "Tamamlandı" ? "Yeni" : "Tamamlandı";
+      try{ await updateDoc(doc(db, "orders", btn.dataset.id), { status: newStatus }); }
+      catch(e){ toast("Güncellenemedi, tekrar dene."); }
+    });
+  });
+}
+
+/* ================= TAB: STOCK ================= */
+function renderStock(content){
+  if (state.loadingProducts){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  content.innerHTML = `
+    <div class="section-title">Stok Durumu</div>
+    ${state.products.length===0 ? `<div class="empty-msg">Katalogda ürün yok. Önce Katalog sekmesinden ürün ekle.</div>` : `
+    <div>
+      ${state.products.map(p=>`
+        <div class="stock-row">
+          <div class="stock-info">
+            <div class="stock-kod">${p.kod}</div>
+            <div class="stock-name">${p.isim}</div>
+          </div>
+          <input class="stock-input ${(p.stok||0) <= 3 ? 'low' : ''}" type="number" min="0" data-kod="${p.kod}" value="${p.stok||0}">
+        </div>
+      `).join("")}
+    </div>`}
+  `;
+  content.querySelectorAll(".stock-input").forEach(inp=>{
+    inp.addEventListener("change", async ()=>{
+      let val = parseInt(inp.value,10); if (isNaN(val)||val<0) val = 0;
+      inp.value = val;
+      try{ await updateDoc(doc(db, "products", inp.dataset.kod), { stok: val }); toast("Stok güncellendi"); }
+      catch(e){ toast("Güncellenemedi"); }
+    });
+  });
+}
+
+/* ================= TAB: SALES SUMMARY ================= */
+function renderSales(content){
+  if (state.loadingOrders){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  const totals = {};
+  state.orders.forEach(o=>(o.items||[]).forEach(it=>{
+    totals[it.kod] = totals[it.kod] || { isim: it.isim, qty: 0 };
+    totals[it.kod].qty += it.qty;
+  }));
+  const rows = Object.entries(totals).map(([kod,v])=>({kod, ...v})).sort((a,b)=>b.qty-a.qty);
+  const max = rows.length ? rows[0].qty : 1;
+  content.innerHTML = `
+    <div class="section-title">Ürün Satış Özeti</div>
+    ${rows.length===0 ? `<div class="empty-msg">Henüz veri yok.</div>` : rows.map((r,i)=>`
+      <div class="summary-row">
+        <div class="summary-rank">${i+1}</div>
+        <div class="summary-name">${r.isim}</div>
+        <div class="summary-bar-wrap"><div class="summary-bar" style="width:${Math.max(6,(r.qty/max)*100)}%"></div></div>
+        <div class="summary-count">${r.qty}</div>
+      </div>
+    `).join("")}
+  `;
+}
+
+/* ================= TAB: PRODUCTION SUMMARY ================= */
+function renderProduction(content){
+  if (state.loadingOrders){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  const totals = {};
+  state.orders.filter(o=>o.status !== "Tamamlandı").forEach(o=>(o.items||[]).forEach(it=>{
+    totals[it.kod] = totals[it.kod] || { isim: it.isim, qty: 0 };
+    totals[it.kod].qty += it.qty;
+  }));
+  const rows = Object.entries(totals).map(([kod,v])=>({kod, ...v})).sort((a,b)=>b.qty-a.qty);
+  const max = rows.length ? rows[0].qty : 1;
+  content.innerHTML = `
+    <div class="section-title">Üretim Özeti</div>
+    <div style="font-size:12px; color:var(--ink-dim); margin:-8px 0 14px;">Henüz tamamlanmamış siparişlerdeki ürün adetleri</div>
+    ${rows.length===0 ? `<div class="empty-msg">Bekleyen üretim yok.</div>` : rows.map((r,i)=>`
+      <div class="summary-row">
+        <div class="summary-rank">${i+1}</div>
+        <div class="summary-name">${r.isim}</div>
+        <div class="summary-bar-wrap"><div class="summary-bar" style="width:${Math.max(6,(r.qty/max)*100)}%; background:var(--orange);"></div></div>
+        <div class="summary-count">${r.qty}</div>
+      </div>
+    `).join("")}
+  `;
+}
+
+/* ================= TAB: CATALOG ================= */
+function renderCatalog(content){
+  if (state.loadingProducts){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  content.innerHTML = `
+    <div class="section-title">Katalog Yönetimi</div>
+    ${state.products.length===0 ? `<button class="seed-btn" id="seed-btn">İlk katalog verilerini yükle (${SEED_CATALOG.length} ürün)</button>` : ""}
+    <div class="catalog-form">
+      <div class="form-row">
+        <input id="new-kod" placeholder="Kod (ör. ANH058)">
+        <input id="new-isim" placeholder="Ürün ismi">
+      </div>
+      <button class="btn secondary" id="add-product-btn" style="width:100%;">+ Ürün Ekle</button>
+    </div>
+    ${state.products.map(p=>`
+      <div class="catalog-row">
+        <span class="stock-kod" style="width:70px; flex-shrink:0;">${p.kod}</span>
+        <input class="name-edit" data-kod="${p.kod}" value="${p.isim}">
+        <button class="del-btn" data-kod="${p.kod}" data-name="${p.isim}">✕</button>
+      </div>
+    `).join("")}
+  `;
+  const seedBtn = document.getElementById("seed-btn");
+  if (seedBtn) seedBtn.addEventListener("click", async ()=>{
+    seedBtn.disabled = true; seedBtn.textContent = "Yükleniyor...";
+    try{
+      for (const p of SEED_CATALOG){
+        await setDoc(doc(db, "products", p.kod), { kod:p.kod, isim:p.isim, stok:0 });
+      }
+      toast("Katalog yüklendi");
+    }catch(e){ toast("Bir sorun oluştu"); }
+  });
+  document.getElementById("add-product-btn").addEventListener("click", async ()=>{
+    const kod = document.getElementById("new-kod").value.trim().toUpperCase();
+    const isim = document.getElementById("new-isim").value.trim();
+    if (!kod || !isim){ toast("Kod ve isim gerekli"); return; }
+    try{
+      await setDoc(doc(db, "products", kod), { kod, isim, stok:0 });
+      document.getElementById("new-kod").value = ""; document.getElementById("new-isim").value = "";
+      toast("Ürün eklendi");
+    }catch(e){ toast("Eklenemedi"); }
+  });
+  content.querySelectorAll(".name-edit").forEach(inp=>{
+    inp.addEventListener("change", async ()=>{
+      try{ await updateDoc(doc(db, "products", inp.dataset.kod), { isim: inp.value.trim() }); toast("Güncellendi"); }
+      catch(e){ toast("Güncellenemedi"); }
+    });
+  });
+  content.querySelectorAll(".del-btn").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      if (!confirm(`"${btn.dataset.name}" katalogdan silinsin mi?`)) return;
+      try{ await deleteDoc(doc(db, "products", btn.dataset.kod)); toast("Silindi"); }
+      catch(e){ toast("Silinemedi"); }
+    });
+  });
+}
+
+/* ================= MAIN RENDER ================= */
+function render(){
+  if (!state.authChecked){ root.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  if (!state.user){ renderLogin(); return; }
+  renderShell();
+}
+
+render();
+</script>
+</body>
+</html>
