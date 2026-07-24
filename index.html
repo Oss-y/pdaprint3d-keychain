@@ -305,7 +305,7 @@ const IMAGE_BASE = "https://raw.githubusercontent.com/Oss-y/pdaprint3d-keychain/
 function startCatalogListener(){
   const q = query(collection(db, "products"), orderBy("kod"));
   onSnapshot(q, snap=>{
-    CATALOG = snap.docs.map(d=>({ kod: d.id, isim: d.data().isim, renk: null }));
+    CATALOG = snap.docs.map(d=>({ kod: d.id, isim: d.data().isim, stok: d.data().stok ?? 0, renk: null }));
     if (state.view === "catalog" || state.view === "tray") render();
   });
 }
@@ -436,6 +436,7 @@ function renderCatalog(){
         <div class="row-info">
           <span class="kod">${p.kod}</span>
           <div class="pname">${p.isim}</div>
+          <span class="tag stock-tag" style="color:${(p.stok||0)===0 ? 'var(--orange)' : (p.stok||0)<=3 ? '#c98a1f' : 'var(--ink-dim)'};">Stok: ${p.stok||0}</span>
         </div>
         <div class="row-qty">
           ${qty>0 ? `
