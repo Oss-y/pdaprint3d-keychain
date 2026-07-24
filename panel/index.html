@@ -217,7 +217,7 @@ let state = {
   user: null,
   authChecked: false,
   loginError: "",
-  tab: "orders", // orders | stock | sales | production | catalog
+  tab: "orders", // orders | stock | sales | catalog | employees
   orders: [],
   products: [],
   loadingOrders: true,
@@ -317,7 +317,6 @@ function renderShell(){
     {key:"orders", label:"Siparişler"},
     {key:"stock", label:"Stok"},
     {key:"sales", label:"Satış Özeti"},
-    {key:"production", label:"Üretim Özeti"},
     {key:"catalog", label:"Katalog"},
     {key:"employees", label:"Çalışanlar"},
   ];
@@ -339,7 +338,6 @@ function renderShell(){
   if (state.tab === "orders") renderOrders(content);
   else if (state.tab === "stock") renderStock(content);
   else if (state.tab === "sales") renderSales(content);
-  else if (state.tab === "production") renderProduction(content);
   else if (state.tab === "catalog") renderCatalog(content);
   else if (state.tab === "employees") renderEmployees(content);
 }
@@ -435,29 +433,6 @@ function renderSales(content){
   `;
 }
 
-/* ================= TAB: PRODUCTION SUMMARY ================= */
-function renderProduction(content){
-  if (state.loadingOrders){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
-  const totals = {};
-  state.orders.filter(o=>o.status !== "Tamamlandı").forEach(o=>(o.items||[]).forEach(it=>{
-    totals[it.kod] = totals[it.kod] || { isim: it.isim, qty: 0 };
-    totals[it.kod].qty += it.qty;
-  }));
-  const rows = Object.entries(totals).map(([kod,v])=>({kod, ...v})).sort((a,b)=>b.qty-a.qty);
-  const max = rows.length ? rows[0].qty : 1;
-  content.innerHTML = `
-    <div class="section-title">Üretim Özeti</div>
-    <div style="font-size:12px; color:var(--ink-dim); margin:-8px 0 14px;">Henüz tamamlanmamış siparişlerdeki ürün adetleri</div>
-    ${rows.length===0 ? `<div class="empty-msg">Bekleyen üretim yok.</div>` : rows.map((r,i)=>`
-      <div class="summary-row">
-        <div class="summary-rank">${i+1}</div>
-        <div class="summary-name">${r.isim}</div>
-        <div class="summary-bar-wrap"><div class="summary-bar" style="width:${Math.max(6,(r.qty/max)*100)}%; background:var(--orange);"></div></div>
-        <div class="summary-count">${r.qty}</div>
-      </div>
-    `).join("")}
-  `;
-}
 
 /* ================= TAB: CATALOG ================= */
 function renderCatalog(content){
