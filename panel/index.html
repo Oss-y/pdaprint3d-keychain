@@ -218,6 +218,7 @@ let state = {
   authChecked: false,
   loginError: "",
   tab: "orders", // orders | stock | sales | catalog | employees
+  orderFilter: "Yeni", // Yeni | Tamamlandı
   orders: [],
   products: [],
   loadingOrders: true,
@@ -345,9 +346,15 @@ function renderShell(){
 /* ================= TAB: ORDERS ================= */
 function renderOrders(content){
   if (state.loadingOrders){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  const filter = state.orderFilter || "Yeni";
+  const filtered = state.orders.filter(o => (o.status || "Yeni") === filter);
   content.innerHTML = `
-    <div class="section-title">Gelen Siparişler</div>
-    ${state.orders.length===0 ? `<div class="empty-msg">Henüz sipariş yok.</div>` : state.orders.map(o=>{
+    <div class="section-title">${filter === "Yeni" ? "Gelen Siparişler" : "Tamamlanan Siparişler"}</div>
+    <div style="display:flex; gap:8px; margin:-8px 0 16px;">
+      <button class="tab-btn ${filter==='Yeni'?'active':''}" data-filter="Yeni" style="flex:1;">Bekleyen</button>
+      <button class="tab-btn ${filter==='Tamamlandı'?'active':''}" data-filter="Tamamlandı" style="flex:1;">Tamamlanan</button>
+    </div>
+    ${filtered.length===0 ? `<div class="empty-msg">Burada sipariş yok.</div>` : filtered.map(o=>{
       const dt = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate() : new Date();
       const isDone = o.status === "Tamamlandı";
       return `
@@ -367,7 +374,12 @@ function renderOrders(content){
             Müşteri: ${o.customerName || "—"}${o.customerPhone ? " · " + o.customerPhone : ""}${o.customerEmail ? " · " + o.customerEmail : ""}
           </div>` : ""}
           <div class="order-items">
-            ${(o.items||[]).map(it=>`<b>${it.qty}×</b> ${it.isim} (${it.kod})<br>`).join("")}
+            ${(o.items||[]).map(it=>`
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <span><b>${it.qty}×</b> ${it.isim} (${it.kod})</span>
+                <button class="return-btn" data-kod="${it.kod}" data-name="${it.isim}" data-qty="${it.qty}"
+                  style="font-family:'JetBrains Mono'; font-size:10px; color:var(--ink-dim); background:none; border:1px solid var(--line); border-radius:10px; padding:3px 8px; cursor:pointer; flex-shrink:0;">İade Al</button>
+              </div>`).join("")}
           </div>
           ${o.note ? `<div class="order-note">"${o.note}"</div>` : ""}
         </div>`;
@@ -378,6 +390,25 @@ function renderOrders(content){
       const newStatus = btn.dataset.status === "Tamamlandı" ? "Yeni" : "Tamamlandı";
       try{ await updateDoc(doc(db, "orders", btn.dataset.id), { status: newStatus }); }
       catch(e){ toast("Güncellenemedi, tekrar dene."); }
+    });
+  });
+  content.querySelectorAll("[data-filter]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ state.orderFilter = btn.dataset.filter; render(); });
+  });
+  content.querySelectorAll(".return-btn").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const maxQty = parseInt(btn.dataset.qty, 10) || 1;
+      const input = prompt(`"${btn.dataset.name}" için kaç adet iade edildi?`, maxQty);
+      if (input === null) return;
+      const qty = parseInt(input, 10);
+      if (isNaN(qty) || qty <= 0){ toast("Geçersiz adet"); return; }
+      try{
+        const ref = doc(db, "products", btn.dataset.kod);
+        const snap = await getDoc(ref);
+        const current = snap.exists() ? (snap.data().stok || 0) : 0;
+        await updateDoc(ref, { stok: current + qty });
+        toast(`${qty} adet stoğa eklendi`);
+      }catch(e){ toast("Stok güncellenemedi"); }
     });
   });
 }
