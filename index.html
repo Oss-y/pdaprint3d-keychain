@@ -325,7 +325,7 @@ let state = {
   cart: {}, // kod -> qty
   search: "",
   searchOpen: false,
-  contact: { name:"", email:"", phone:"", note:"" },
+  contact: { shopName:"", note:"" },
   lastError: null,
 };
 
@@ -568,22 +568,13 @@ function renderContact(){
   overlay.innerHTML = `
     <div class="sheet">
       <div class="sheet-head">
-        <div class="sheet-title">İletişim Bilgilerin</div>
+        <div class="sheet-title">Teslimat Bilgisi</div>
         <button class="close-x" id="close-contact">✕</button>
       </div>
       <div class="field">
-        <label>Ad Soyad</label>
-        <input id="f-name" placeholder="Adın soyadın" value="${state.contact.name}">
+        <label>Dükkan Adı</label>
+        <input id="f-shop" placeholder="Ürünlerin teslim edileceği dükkan" value="${state.contact.shopName||''}">
       </div>
-      <div class="field">
-        <label>E-posta</label>
-        <input id="f-email" placeholder="ornek@eposta.com" value="${state.contact.email}">
-      </div>
-      <div class="field">
-        <label>Telefon</label>
-        <input id="f-phone" placeholder="05xx xxx xx xx" value="${state.contact.phone}">
-      </div>
-      <div class="hint">E-posta veya telefondan en az birini bırakman yeterli.</div>
       <div class="field">
         <label>Not (opsiyonel)</label>
         <textarea id="f-note" placeholder="Renk tercihi, teslimat notu vb.">${state.contact.note}</textarea>
@@ -599,22 +590,17 @@ function renderContact(){
   overlay.querySelector("#back-to-tray").addEventListener("click", ()=>{ overlay.remove(); state.view="tray"; render(); });
 
   overlay.querySelector("#submit-request").addEventListener("click", async ()=>{
-    const name = overlay.querySelector("#f-name").value.trim();
-    const email = overlay.querySelector("#f-email").value.trim();
-    const phone = overlay.querySelector("#f-phone").value.trim();
+    const shopName = overlay.querySelector("#f-shop").value.trim();
     const note = overlay.querySelector("#f-note").value.trim();
     const errEl = overlay.querySelector("#form-err");
-    if (!name){ errEl.textContent = "Lütfen ad soyad gir."; return; }
-    if (!email && !phone){ errEl.textContent = "E-posta veya telefondan en az birini gir."; return; }
+    if (!shopName){ errEl.textContent = "Lütfen dükkan adını gir."; return; }
 
     const btn = overlay.querySelector("#submit-request");
     btn.disabled = true; btn.textContent = "Gönderiliyor...";
 
     const order = {
       employee: currentUsername(),
-      customerName: name,
-      customerEmail: email,
-      customerPhone: phone,
+      shopName,
       note,
       items: cartItems().map(p=>({kod:p.kod, isim:p.isim, qty:p.qty})),
       status: "Yeni",
@@ -624,7 +610,7 @@ function renderContact(){
     try{
       await addDoc(collection(db, "orders"), order);
       state.cart = {};
-      state.contact = { name:"", email:"", phone:"", note:"" };
+      state.contact = { shopName:"", note:"" };
       overlay.remove();
       state.view = "confirm";
       render();
