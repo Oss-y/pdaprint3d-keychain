@@ -426,7 +426,15 @@ function renderWelcome(){
 /* ================= RENDER: CATALOG ================= */
 function renderCatalog(){
   const q = state.search.trim().toLowerCase();
-  const items = CATALOG.filter(p => p.isim.toLowerCase().includes(q) || p.kod.toLowerCase().includes(q));
+  const items = CATALOG.filter(p => p.isim.toLowerCase().includes(q) || p.kod.toLowerCase().includes(q))
+    .slice()
+    .sort((a,b)=>{
+      const sa = a.stok||0, sb = b.stok||0;
+      if (sa>0 && sb===0) return -1;
+      if (sa===0 && sb>0) return 1;
+      if (sa!==sb) return sb - sa;
+      return a.kod.localeCompare(b.kod);
+    });
 
   const cards = items.map(p=>{
     const qty = state.cart[p.kod] || 0;
