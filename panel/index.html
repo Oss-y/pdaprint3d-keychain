@@ -167,9 +167,9 @@
 <div id="app"><div class="spinner">Yükleniyor...</div></div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, setDoc, updateDoc, deleteDoc,
@@ -304,6 +304,7 @@ function renderShell(){
     {key:"sales", label:"Satış Özeti"},
     {key:"production", label:"Üretim Özeti"},
     {key:"catalog", label:"Katalog"},
+    {key:"employees", label:"Çalışanlar"},
   ];
   root.innerHTML = `
     <header class="top">
@@ -325,6 +326,7 @@ function renderShell(){
   else if (state.tab === "sales") renderSales(content);
   else if (state.tab === "production") renderProduction(content);
   else if (state.tab === "catalog") renderCatalog(content);
+  else if (state.tab === "employees") renderEmployees(content);
 }
 
 /* ================= TAB: ORDERS ================= */
@@ -498,7 +500,65 @@ function renderCatalog(content){
   });
 }
 
-/* ================= MAIN RENDER ================= */
+/* ================= TAB: EMPLOYEES ================= */
+function renderEmployees(content){
+  if (state.loadingOrders){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  const stats = {};
+  state.orders.forEach(o=>{
+    const emp = o.employee || "Bilinmiyor";
+    stats[emp] = stats[emp] || { orderCount: 0, itemCount: 0 };
+    stats[emp].orderCount += 1;
+    stats[emp].itemCount += (o.items||[]).reduce((a,it)=>a+it.qty, 0);
+  });
+  const rows = Object.entries(stats).map(([name,v])=>({name, ...v})).sort((a,b)=>b.orderCount-a.orderCount);
+
+  content.innerHTML = `
+    <div class="section-title">Yeni Çalışan Ekle</div>
+    <div class="catalog-form">
+      <div class="form-row">
+        <input id="new-emp-user" placeholder="Kullanıcı adı (ör. ayse)" autocapitalize="off">
+        <input id="new-emp-pass" type="password" placeholder="Şifre (en az 6 karakter)">
+      </div>
+      <div class="err" id="emp-err" style="margin-bottom:8px;"></div>
+      <button class="btn secondary" id="add-emp-btn" style="width:100%;">+ Çalışan Ekle</button>
+    </div>
+    <div class="section-title">Çalışan Özeti</div>
+    ${rows.length===0 ? `<div class="empty-msg">Henüz sipariş girilmemiş.</div>` : rows.map(r=>`
+      <div class="summary-row">
+        <div class="summary-name">${r.name}</div>
+        <div class="summary-count" style="width:auto;">${r.orderCount} sipariş</div>
+        <div class="summary-count">${r.itemCount} adet</div>
+      </div>
+    `).join("")}
+  `;
+
+  document.getElementById("add-emp-btn").addEventListener("click", async ()=>{
+    const uRaw = document.getElementById("new-emp-user").value.trim().toLowerCase();
+    const p = document.getElementById("new-emp-pass").value;
+    const errEl = document.getElementById("emp-err");
+    errEl.textContent = "";
+    if (!uRaw || !p){ errEl.textContent = "Kullanıcı adı ve şifre gerekli."; return; }
+    if (p.length < 6){ errEl.textContent = "Şifre en az 6 karakter olmalı."; return; }
+    const btn = document.getElementById("add-emp-btn");
+    btn.disabled = true; btn.textContent = "Ekleniyor...";
+    // İkincil (geçici) bir Firebase app örneği kullanıyoruz ki
+    // yeni kullanıcı oluşturulurken senin admin oturumun etkilenmesin.
+    const secondaryApp = initializeApp(firebaseConfig, "Secondary-" + Date.now());
+    const secondaryAuth = getAuth(secondaryApp);
+    try{
+      await createUserWithEmailAndPassword(secondaryAuth, uRaw + EMAIL_DOMAIN, p);
+      await signOut(secondaryAuth);
+      toast(`"${uRaw}" eklendi`);
+      document.getElementById("new-emp-user").value = "";
+      document.getElementById("new-emp-pass").value = "";
+    }catch(e){
+      errEl.textContent = e.code === "auth/email-already-in-use" ? "Bu kullanıcı adı zaten kayıtlı." : "Eklenemedi, tekrar dene.";
+    }finally{
+      try{ await deleteApp(secondaryApp); }catch(e){}
+      btn.disabled = false; btn.textContent = "+ Çalışan Ekle";
+    }
+  });
+}
 function render(){
   if (!state.authChecked){ root.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
   if (!state.user){ renderLogin(); return; }
