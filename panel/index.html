@@ -344,6 +344,10 @@ function renderOrders(content){
             </div>
             <button class="status-pill ${isDone?'tamamlandi':'yeni'}" data-id="${o.id}" data-status="${o.status||'Yeni'}">${o.status || "Yeni"}</button>
           </div>
+          ${(o.customerName || o.customerPhone || o.customerEmail) ? `
+          <div class="order-note" style="font-style:normal; margin-bottom:8px;">
+            Müşteri: ${o.customerName || "—"}${o.customerPhone ? " · " + o.customerPhone : ""}${o.customerEmail ? " · " + o.customerEmail : ""}
+          </div>` : ""}
           <div class="order-items">
             ${(o.items||[]).map(it=>`<b>${it.qty}×</b> ${it.isim} (${it.kod})<br>`).join("")}
           </div>
