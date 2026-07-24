@@ -172,7 +172,7 @@ import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, collection, doc, setDoc, updateDoc, deleteDoc,
+  getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, getDoc,
   onSnapshot, query, orderBy, serverTimestamp, getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -216,6 +216,7 @@ const SEED_CATALOG = [
 let state = {
   user: null,
   authChecked: false,
+  loginError: "",
   tab: "orders", // orders | stock | sales | production | catalog
   orders: [],
   products: [],
@@ -235,12 +236,26 @@ function toast(msg){
 }
 
 /* ================= AUTH ================= */
-onAuthStateChanged(auth, (user)=>{
-  state.user = user;
+onAuthStateChanged(auth, async (user)=>{
   state.authChecked = true;
   if (user){
+    let authorized = false;
+    try{
+      const adminDoc = await getDoc(doc(db, "admins", user.uid));
+      authorized = adminDoc.exists();
+    }catch(e){ authorized = false; }
+    if (!authorized){
+      state.user = null;
+      state.loginError = "Bu hesabın panele erişim yetkisi yok.";
+      await signOut(auth);
+      render();
+      return;
+    }
+    state.user = user;
+    state.loginError = "";
     startListeners();
   } else {
+    state.user = null;
     if (unsubOrders) unsubOrders();
     if (unsubProducts) unsubProducts();
     state.orders = []; state.products = [];
@@ -274,7 +289,7 @@ function renderLogin(){
       <div class="login-sub">Takip Paneli</div>
       <div class="field"><label>Kullanıcı Adı</label><input id="li-user" autocapitalize="off" autocorrect="off"></div>
       <div class="field"><label>Şifre</label><input id="li-pass" type="password"></div>
-      <div class="err" id="li-err"></div>
+      <div class="err" id="li-err">${state.loginError}</div>
       <button class="btn" id="li-submit">Giriş Yap</button>
     </div>
   `;
