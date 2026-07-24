@@ -278,7 +278,7 @@ import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp
+  getFirestore, collection, addDoc, doc, runTransaction, onSnapshot, query, orderBy, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -610,6 +610,7 @@ function renderContact(){
 
     try{
       await addDoc(collection(db, "orders"), order);
+      await decrementStock(order.items);
       state.cart = {};
       state.contact = { shopName:"", note:"" };
       overlay.remove();
@@ -620,6 +621,20 @@ function renderContact(){
       btn.disabled = false; btn.textContent = "Talebi Gönder";
     }
   });
+}
+
+async function decrementStock(items){
+  for (const it of items){
+    try{
+      await runTransaction(db, async (tx)=>{
+        const ref = doc(db, "products", it.kod);
+        const snap = await tx.get(ref);
+        if (!snap.exists()) return;
+        const current = snap.data().stok || 0;
+        tx.update(ref, { stok: Math.max(0, current - it.qty) });
+      });
+    }catch(e){ /* best effort, sipariş yine de kaydedildi */ }
+  }
 }
 
 /* ================= RENDER: CONFIRM ================= */
