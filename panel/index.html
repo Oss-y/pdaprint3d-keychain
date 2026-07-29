@@ -222,6 +222,7 @@ let state = {
   orders: [],
   products: [],
   filaments: [],
+  filamentFilter: "Tümü",
   loadingOrders: true,
   loadingProducts: true,
   loadingFilaments: true,
@@ -535,37 +536,104 @@ function renderCatalog(content){
 }
 
 /* ================= TAB: FILAMENTS ================= */
+const SEED_FILAMENTS = [
+  {marka:"sunlu", tur:"PLA", renk:"Sakura Pink", adet:1, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA Matte", renk:"Pink", adet:2, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA Matte", renk:"Purple", adet:0, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA", renk:"Red", adet:1, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA", renk:"Sunny Orange", adet:1, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA", renk:"Beige", adet:1, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"Silk PLA+", renk:"Beyaz", adet:1, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA", renk:"Klein Blue", adet:2, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"Silk PLA+", renk:"Blue", adet:1, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA", renk:"Black", adet:4, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA", renk:"Coffee Brown", adet:4, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA", renk:"Grey", adet:1, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA", renk:"White", adet:4, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA", renk:"Yellow", adet:1, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"Silk PLA+", renk:"Brass", adet:1, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"Silk PLA+", renk:"Red Copper", adet:2, cap:"1.75 mm"},
+  {marka:"sunlu", tur:"PLA Matte", renk:"Orange", adet:2, cap:"1.75 mm"},
+  {marka:"porima", tur:"TPU", renk:"Bamboo Green", adet:1, cap:"1.75 mm"},
+];
+
 function renderFilaments(content){
   if (state.loadingFilaments){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+
+  const types = [...new Set(state.filaments.map(f=>f.tur).filter(Boolean))].sort();
+  const activeType = state.filamentFilter || "Tümü";
+  const shown = activeType === "Tümü" ? state.filaments : state.filaments.filter(f=>f.tur===activeType);
+
+  const grouped = {};
+  shown.forEach(f=>{
+    const key = f.tur || "Diğer";
+    grouped[key] = grouped[key] || [];
+    grouped[key].push(f);
+  });
+
   content.innerHTML = `
     <div class="section-title">Filament Stoğu</div>
+    ${state.filaments.length===0 ? `<button class="seed-btn" id="seed-fil-btn">İlk filament listesini yükle (${SEED_FILAMENTS.length} kalem)</button>` : ""}
     <div class="catalog-form">
       <div class="form-row">
-        <input id="new-fil-name" placeholder="Renk / marka (ör. Sunlu Kırmızı PLA)">
-        <input id="new-fil-qty" type="number" min="0" placeholder="Makara" style="max-width:80px;">
+        <input id="new-fil-marka" placeholder="Marka (ör. sunlu)">
+        <input id="new-fil-tur" placeholder="Tür (ör. PLA)">
+      </div>
+      <div class="form-row">
+        <input id="new-fil-renk" placeholder="Renk">
+        <input id="new-fil-adet" type="number" min="0" placeholder="Adet" style="max-width:70px;">
+        <input id="new-fil-cap" placeholder="Çap" value="1.75 mm" style="max-width:90px;">
       </div>
       <button class="btn secondary" id="add-fil-btn" style="width:100%;">+ Filament Ekle</button>
     </div>
-    ${state.filaments.length===0 ? `<div class="empty-msg">Henüz filament eklenmedi.</div>` : state.filaments.map(f=>`
-      <div class="stock-row">
-        <div class="stock-info">
-          <div class="stock-name">${f.name}</div>
+    ${types.length > 0 ? `
+    <div class="tabbar" style="padding:0 0 14px;">
+      <button class="tab-btn ${activeType==='Tümü'?'active':''}" data-type="Tümü">Tümü</button>
+      ${types.map(t=>`<button class="tab-btn ${activeType===t?'active':''}" data-type="${t}">${t}</button>`).join("")}
+    </div>` : ""}
+    ${shown.length===0 ? `<div class="empty-msg">Bu türde filament yok.</div>` : Object.keys(grouped).sort().map(tur=>`
+      <div style="font-family:'JetBrains Mono'; font-size:11px; color:var(--ink-dim); margin:14px 0 4px;">${tur.toUpperCase()}</div>
+      ${grouped[tur].map(f=>`
+        <div class="stock-row">
+          <div class="stock-info">
+            <div class="stock-kod">${f.marka||''} · ${f.cap||''}</div>
+            <div class="stock-name">${f.renk}</div>
+          </div>
+          <input class="stock-input ${(f.adet||0)===0 ? 'low' : ''}" type="number" min="0" data-id="${f.id}" value="${f.adet||0}">
+          <button class="del-btn" data-id="${f.id}" data-name="${f.renk}">✕</button>
         </div>
-        <input class="stock-input ${(f.qty||0)===0 ? 'low' : ''}" type="number" min="0" data-id="${f.id}" value="${f.qty||0}">
-        <button class="del-btn" data-id="${f.id}" data-name="${f.name}">✕</button>
-      </div>
+      `).join("")}
     `).join("")}
   `;
+
+  const seedBtn = document.getElementById("seed-fil-btn");
+  if (seedBtn) seedBtn.addEventListener("click", async ()=>{
+    seedBtn.disabled = true; seedBtn.textContent = "Yükleniyor...";
+    try{
+      for (const f of SEED_FILAMENTS){
+        const ref = doc(collection(db, "filaments"));
+        await setDoc(ref, f);
+      }
+      toast("Filament listesi yüklendi");
+    }catch(e){ toast("Bir sorun oluştu"); }
+  });
+
+  content.querySelectorAll(".tab-btn[data-type]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ state.filamentFilter = btn.dataset.type; renderFilaments(content); });
+  });
+
   document.getElementById("add-fil-btn").addEventListener("click", async ()=>{
-    const name = document.getElementById("new-fil-name").value.trim();
-    let qty = parseInt(document.getElementById("new-fil-qty").value, 10);
-    if (isNaN(qty) || qty < 0) qty = 0;
-    if (!name){ toast("İsim gerekli"); return; }
+    const marka = document.getElementById("new-fil-marka").value.trim();
+    const tur = document.getElementById("new-fil-tur").value.trim();
+    const renk = document.getElementById("new-fil-renk").value.trim();
+    const cap = document.getElementById("new-fil-cap").value.trim() || "1.75 mm";
+    let adet = parseInt(document.getElementById("new-fil-adet").value, 10);
+    if (isNaN(adet) || adet < 0) adet = 0;
+    if (!renk || !tur){ toast("Tür ve renk gerekli"); return; }
     try{
       const ref = doc(collection(db, "filaments"));
-      await setDoc(ref, { name, qty });
-      document.getElementById("new-fil-name").value = "";
-      document.getElementById("new-fil-qty").value = "";
+      await setDoc(ref, { marka, tur, renk, adet, cap });
+      ["new-fil-marka","new-fil-tur","new-fil-renk","new-fil-adet"].forEach(id=>document.getElementById(id).value="");
       toast("Filament eklendi");
     }catch(e){ toast("Eklenemedi"); }
   });
@@ -573,7 +641,7 @@ function renderFilaments(content){
     inp.addEventListener("change", async ()=>{
       let val = parseInt(inp.value,10); if (isNaN(val)||val<0) val = 0;
       inp.value = val;
-      try{ await updateDoc(doc(db, "filaments", inp.dataset.id), { qty: val }); toast("Güncellendi"); }
+      try{ await updateDoc(doc(db, "filaments", inp.dataset.id), { adet: val }); toast("Güncellendi"); }
       catch(e){ toast("Güncellenemedi"); }
     });
   });
