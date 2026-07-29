@@ -286,7 +286,7 @@ function startListeners(){
   }, err=>{ console.error(err); state.loadingProducts = false; render(); });
 
   state.loadingFilaments = true;
-  const filamentsQ = query(collection(db, "filaments"), orderBy("name"));
+  const filamentsQ = query(collection(db, "filaments"));
   unsubFilaments = onSnapshot(filamentsQ, snap=>{
     state.filaments = snap.docs.map(d=>({ id:d.id, ...d.data() }));
     state.loadingFilaments = false;
@@ -570,6 +570,7 @@ function renderFilaments(content){
     grouped[key] = grouped[key] || [];
     grouped[key].push(f);
   });
+  Object.values(grouped).forEach(arr=>arr.sort((a,b)=>(a.renk||"").localeCompare(b.renk||"")));
 
   content.innerHTML = `
     <div class="section-title">Filament Stoğu</div>
