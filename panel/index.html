@@ -217,16 +217,18 @@ let state = {
   user: null,
   authChecked: false,
   loginError: "",
-  tab: "orders", // orders | stock | sales | catalog | employees
+  tab: "orders", // orders | stock | sales | catalog | filaments | employees
   orderFilter: "Yeni", // Yeni | Tamamlandı
   orders: [],
   products: [],
+  filaments: [],
   loadingOrders: true,
   loadingProducts: true,
+  loadingFilaments: true,
 };
 
 const root = document.getElementById("app");
-let unsubOrders = null, unsubProducts = null;
+let unsubOrders = null, unsubProducts = null, unsubFilaments = null;
 
 function toast(msg){
   const t = document.createElement("div");
@@ -259,7 +261,8 @@ onAuthStateChanged(auth, async (user)=>{
     state.user = null;
     if (unsubOrders) unsubOrders();
     if (unsubProducts) unsubProducts();
-    state.orders = []; state.products = [];
+    if (unsubFilaments) unsubFilaments();
+    state.orders = []; state.products = []; state.filaments = [];
   }
   render();
 });
@@ -280,6 +283,14 @@ function startListeners(){
     state.loadingProducts = false;
     render();
   }, err=>{ console.error(err); state.loadingProducts = false; render(); });
+
+  state.loadingFilaments = true;
+  const filamentsQ = query(collection(db, "filaments"), orderBy("name"));
+  unsubFilaments = onSnapshot(filamentsQ, snap=>{
+    state.filaments = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    state.loadingFilaments = false;
+    render();
+  }, err=>{ console.error(err); state.loadingFilaments = false; render(); });
 }
 
 /* ================= RENDER: LOGIN ================= */
@@ -319,6 +330,7 @@ function renderShell(){
     {key:"stock", label:"Stok"},
     {key:"sales", label:"Satış Özeti"},
     {key:"catalog", label:"Katalog"},
+    {key:"filaments", label:"Filament Stok"},
     {key:"employees", label:"Çalışanlar"},
   ];
   root.innerHTML = `
@@ -340,6 +352,7 @@ function renderShell(){
   else if (state.tab === "stock") renderStock(content);
   else if (state.tab === "sales") renderSales(content);
   else if (state.tab === "catalog") renderCatalog(content);
+  else if (state.tab === "filaments") renderFilaments(content);
   else if (state.tab === "employees") renderEmployees(content);
 }
 
@@ -516,6 +529,58 @@ function renderCatalog(content){
     btn.addEventListener("click", async ()=>{
       if (!confirm(`"${btn.dataset.name}" katalogdan silinsin mi?`)) return;
       try{ await deleteDoc(doc(db, "products", btn.dataset.kod)); toast("Silindi"); }
+      catch(e){ toast("Silinemedi"); }
+    });
+  });
+}
+
+/* ================= TAB: FILAMENTS ================= */
+function renderFilaments(content){
+  if (state.loadingFilaments){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  content.innerHTML = `
+    <div class="section-title">Filament Stoğu</div>
+    <div class="catalog-form">
+      <div class="form-row">
+        <input id="new-fil-name" placeholder="Renk / marka (ör. Sunlu Kırmızı PLA)">
+        <input id="new-fil-qty" type="number" min="0" placeholder="Makara" style="max-width:80px;">
+      </div>
+      <button class="btn secondary" id="add-fil-btn" style="width:100%;">+ Filament Ekle</button>
+    </div>
+    ${state.filaments.length===0 ? `<div class="empty-msg">Henüz filament eklenmedi.</div>` : state.filaments.map(f=>`
+      <div class="stock-row">
+        <div class="stock-info">
+          <div class="stock-name">${f.name}</div>
+        </div>
+        <input class="stock-input ${(f.qty||0)===0 ? 'low' : ''}" type="number" min="0" data-id="${f.id}" value="${f.qty||0}">
+        <button class="del-btn" data-id="${f.id}" data-name="${f.name}">✕</button>
+      </div>
+    `).join("")}
+  `;
+  document.getElementById("add-fil-btn").addEventListener("click", async ()=>{
+    const name = document.getElementById("new-fil-name").value.trim();
+    let qty = parseInt(document.getElementById("new-fil-qty").value, 10);
+    if (isNaN(qty) || qty < 0) qty = 0;
+    if (!name){ toast("İsim gerekli"); return; }
+    try{
+      const ref = doc(collection(db, "filaments"));
+      await setDoc(ref, { name, qty });
+      document.getElementById("new-fil-name").value = "";
+      document.getElementById("new-fil-qty").value = "";
+      toast("Filament eklendi");
+    }catch(e){ toast("Eklenemedi"); }
+  });
+  content.querySelectorAll(".stock-input").forEach(inp=>{
+    inp.addEventListener("change", async ()=>{
+      let val = parseInt(inp.value,10); if (isNaN(val)||val<0) val = 0;
+      inp.value = val;
+      try{ await updateDoc(doc(db, "filaments", inp.dataset.id), { qty: val }); toast("Güncellendi"); }
+      catch(e){ toast("Güncellenemedi"); }
+    });
+  });
+  content.querySelectorAll(".del-btn[data-id]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      if (!confirm(`"${btn.dataset.name}" silinsin mi?`)) return;
+      try{ await deleteDoc(doc(db, "filaments", btn.dataset.id)); toast("Silindi"); }
       catch(e){ toast("Silinemedi"); }
     });
   });
