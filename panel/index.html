@@ -615,7 +615,13 @@ function renderFilaments(content){
         await setDoc(ref, f);
       }
       toast("Filament listesi yüklendi");
-    }catch(e){ toast("Bir sorun oluştu"); }
+    }catch(e){
+      console.error(e);
+      toast("Hata: " + (e && e.message ? e.message : "bilinmeyen sorun"));
+    }finally{
+      seedBtn.disabled = false;
+      seedBtn.textContent = `İlk filament listesini yükle (${SEED_FILAMENTS.length} kalem)`;
+    }
   });
 
   content.querySelectorAll(".tab-btn[data-type]").forEach(btn=>{
