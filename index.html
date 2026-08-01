@@ -612,7 +612,7 @@ function renderContact(){
       shopName,
       note,
       items: cartItems().map(p=>({kod:p.kod, isim:p.isim, qty:p.qty})),
-      status: "Yeni",
+      status: "Bekleyen",
       createdAt: serverTimestamp(),
     };
 
