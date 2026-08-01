@@ -875,7 +875,9 @@ function renderEmployees(content){
     const emp = o.employee || "Bilinmiyor";
     stats[emp] = stats[emp] || { orderCount: 0, itemCount: 0 };
     stats[emp].orderCount += 1;
-    stats[emp].itemCount += (o.items||[]).reduce((a,it)=>a+it.qty, 0);
+    if (statusOf(o) === "Satıldı"){
+      stats[emp].itemCount += (o.items||[]).reduce((a,it)=>a+it.qty, 0);
+    }
   });
   const rows = Object.entries(stats).map(([name,v])=>({name, ...v})).sort((a,b)=>b.orderCount-a.orderCount);
 
@@ -894,7 +896,7 @@ function renderEmployees(content){
       <div class="summary-row">
         <div class="summary-name">${r.name}</div>
         <div class="summary-count" style="width:auto;">${r.orderCount} sipariş</div>
-        <div class="summary-count">${r.itemCount} adet</div>
+        <div class="summary-count">${r.itemCount} satıldı</div>
       </div>
     `).join("")}
   `;
