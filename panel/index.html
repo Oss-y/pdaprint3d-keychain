@@ -224,6 +224,7 @@ let state = {
   products: [],
   filaments: [],
   filamentFilter: "Tümü",
+  stockSubTab: "Ürün",
   unitPrice: 50,
   loadingSettings: true,
   loadingOrders: true,
@@ -339,11 +340,8 @@ function renderLogin(){
 function renderShell(){
   const tabs = [
     {key:"orders", label:"Siparişler"},
-    {key:"sales", label:"Satış Özeti"},
-    {key:"balance", label:"Bakiye"},
-    {key:"stock", label:"Ürün Stok"},
-    {key:"filaments", label:"Filament Stok"},
-    {key:"catalog", label:"Katalog"},
+    {key:"sales", label:"Satış"},
+    {key:"stock", label:"Stok"},
     {key:"employees", label:"Çalışanlar"},
   ];
   root.innerHTML = `
@@ -362,11 +360,8 @@ function renderShell(){
   });
   const content = document.getElementById("tab-content");
   if (state.tab === "orders") renderOrders(content);
-  else if (state.tab === "stock") renderStock(content);
+  else if (state.tab === "stock") renderStockHub(content);
   else if (state.tab === "sales") renderSales(content);
-  else if (state.tab === "balance") renderBalance(content);
-  else if (state.tab === "catalog") renderCatalog(content);
-  else if (state.tab === "filaments") renderFilaments(content);
   else if (state.tab === "employees") renderEmployees(content);
 }
 
@@ -512,7 +507,26 @@ function renderOrders(content){
 }
 
 /* ================= TAB: STOCK ================= */
-function renderStock(content){
+function renderStockHub(content){
+  const sub = state.stockSubTab || "Ürün";
+  content.innerHTML = `
+    <div class="tabbar" style="padding:0 0 14px;">
+      <button class="tab-btn ${sub==='Ürün'?'active':''}" data-sub="Ürün">Ürün</button>
+      <button class="tab-btn ${sub==='Filament'?'active':''}" data-sub="Filament">Filament</button>
+      <button class="tab-btn ${sub==='Katalog'?'active':''}" data-sub="Katalog">Katalog</button>
+    </div>
+    <div id="stock-sub-content"></div>
+  `;
+  content.querySelectorAll("[data-sub]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ state.stockSubTab = btn.dataset.sub; renderStockHub(content); });
+  });
+  const subContent = document.getElementById("stock-sub-content");
+  if (sub === "Ürün") renderProductStock(subContent);
+  else if (sub === "Filament") renderFilaments(subContent);
+  else if (sub === "Katalog") renderCatalog(subContent);
+}
+
+function renderProductStock(content){
   if (state.loadingProducts){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
   content.innerHTML = `
     <div class="section-title">Stok Durumu</div>
@@ -541,37 +555,11 @@ function renderStock(content){
 
 /* ================= TAB: SALES SUMMARY ================= */
 function renderSales(content){
-  if (state.loadingOrders){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
-  const totals = {};
-  state.orders.filter(o=>statusOf(o)==="Satıldı").forEach(o=>(o.items||[]).forEach(it=>{
-    totals[it.kod] = totals[it.kod] || { isim: it.isim, qty: 0 };
-    totals[it.kod].qty += it.qty;
-  }));
-  const rows = Object.entries(totals).map(([kod,v])=>({kod, ...v})).sort((a,b)=>b.qty-a.qty);
-  const max = rows.length ? rows[0].qty : 1;
-  content.innerHTML = `
-    <div class="section-title">Ürün Satış Özeti</div>
-    ${rows.length===0 ? `<div class="empty-msg">Henüz veri yok.</div>` : rows.map((r,i)=>`
-      <div class="summary-row">
-        <div class="summary-rank">${i+1}</div>
-        <div class="summary-name">${r.isim}</div>
-        <div class="summary-bar-wrap"><div class="summary-bar" style="width:${Math.max(6,(r.qty/max)*100)}%"></div></div>
-        <div class="summary-count">${r.qty}</div>
-      </div>
-    `).join("")}
-  `;
-}
-
-/* ================= TAB: BALANCE ================= */
-function renderBalance(content){
   if (state.loadingOrders || state.loadingSettings){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
 
-  let pendingQty = 0, deliveredQty = 0, soldQty = 0, returnedQty = 0;
+  let pendingQty = 0, deliveredQty = 0, soldQty = 0;
   state.orders.forEach(o=>{
-    const items = o.items || [];
-    const qtySum = items.reduce((a,it)=>a + (it.qty||0), 0);
-    const retSum = items.reduce((a,it)=>a + (it.returned||0), 0);
-    returnedQty += retSum;
+    const qtySum = (o.items||[]).reduce((a,it)=>a + (it.qty||0), 0);
     const st = statusOf(o);
     if (st === "Satıldı") soldQty += qtySum;
     else if (st === "Teslim Edildi") deliveredQty += qtySum;
@@ -580,8 +568,16 @@ function renderBalance(content){
   const price = state.unitPrice || 0;
   const totalBalance = soldQty * price;
 
+  const totals = {};
+  state.orders.filter(o=>statusOf(o)==="Satıldı").forEach(o=>(o.items||[]).forEach(it=>{
+    totals[it.kod] = totals[it.kod] || { isim: it.isim, qty: 0 };
+    totals[it.kod].qty += it.qty;
+  }));
+  const rows = Object.entries(totals).map(([kod,v])=>({kod, ...v})).sort((a,b)=>b.qty-a.qty);
+  const max = rows.length ? rows[0].qty : 1;
+
   content.innerHTML = `
-    <div class="section-title">Bakiye</div>
+    <div class="section-title">Satış</div>
     <div class="catalog-form">
       <div class="form-row">
         <label style="display:flex; align-items:center; font-size:12.5px; color:var(--ink-dim); white-space:nowrap;">Birim Fiyat (TL)</label>
@@ -606,6 +602,16 @@ function renderBalance(content){
       <div class="summary-name" style="font-family:'Indie Flower'; font-size:22px;">Toplam Bakiye</div>
       <div class="summary-count" style="width:auto; font-size:18px; color:var(--green);">${totalBalance.toLocaleString('tr-TR')} TL</div>
     </div>
+
+    <div class="section-title" style="margin-top:26px;">Ürün Bazında Satış</div>
+    ${rows.length===0 ? `<div class="empty-msg">Henüz satılan ürün yok.</div>` : rows.map((r,i)=>`
+      <div class="summary-row">
+        <div class="summary-rank">${i+1}</div>
+        <div class="summary-name">${r.isim}</div>
+        <div class="summary-bar-wrap"><div class="summary-bar" style="width:${Math.max(6,(r.qty/max)*100)}%"></div></div>
+        <div class="summary-count">${r.qty}</div>
+      </div>
+    `).join("")}
   `;
 
   document.getElementById("save-price-btn").addEventListener("click", async ()=>{
