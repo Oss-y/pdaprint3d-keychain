@@ -223,13 +223,15 @@ let state = {
   products: [],
   filaments: [],
   filamentFilter: "Tümü",
+  unitPrice: 50,
+  loadingSettings: true,
   loadingOrders: true,
   loadingProducts: true,
   loadingFilaments: true,
 };
 
 const root = document.getElementById("app");
-let unsubOrders = null, unsubProducts = null, unsubFilaments = null;
+let unsubOrders = null, unsubProducts = null, unsubFilaments = null, unsubSettings = null;
 
 function toast(msg){
   const t = document.createElement("div");
@@ -263,6 +265,7 @@ onAuthStateChanged(auth, async (user)=>{
     if (unsubOrders) unsubOrders();
     if (unsubProducts) unsubProducts();
     if (unsubFilaments) unsubFilaments();
+    if (unsubSettings) unsubSettings();
     state.orders = []; state.products = []; state.filaments = [];
   }
   render();
@@ -292,6 +295,13 @@ function startListeners(){
     state.loadingFilaments = false;
     render();
   }, err=>{ console.error(err); state.loadingFilaments = false; render(); });
+
+  state.loadingSettings = true;
+  unsubSettings = onSnapshot(doc(db, "settings", "pricing"), snap=>{
+    state.unitPrice = snap.exists() && typeof snap.data().unitPrice === "number" ? snap.data().unitPrice : 50;
+    state.loadingSettings = false;
+    render();
+  }, err=>{ console.error(err); state.loadingSettings = false; render(); });
 }
 
 /* ================= RENDER: LOGIN ================= */
@@ -329,6 +339,7 @@ function renderShell(){
   const tabs = [
     {key:"orders", label:"Siparişler"},
     {key:"sales", label:"Satış Özeti"},
+    {key:"balance", label:"Bakiye"},
     {key:"stock", label:"Ürün Stok"},
     {key:"filaments", label:"Filament Stok"},
     {key:"catalog", label:"Katalog"},
@@ -352,6 +363,7 @@ function renderShell(){
   if (state.tab === "orders") renderOrders(content);
   else if (state.tab === "stock") renderStock(content);
   else if (state.tab === "sales") renderSales(content);
+  else if (state.tab === "balance") renderBalance(content);
   else if (state.tab === "catalog") renderCatalog(content);
   else if (state.tab === "filaments") renderFilaments(content);
   else if (state.tab === "employees") renderEmployees(content);
@@ -390,8 +402,8 @@ function renderOrders(content){
           <div class="order-items">
             ${(o.items||[]).map(it=>`
               <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                <span><b>${it.qty}×</b> ${it.isim} (${it.kod})</span>
-                <button class="return-btn" data-kod="${it.kod}" data-name="${it.isim}" data-qty="${it.qty}"
+                <span><b>${it.qty}×</b> ${it.isim} (${it.kod})${it.returned ? ` <span style="color:var(--red);">(${it.returned} iade)</span>` : ""}</span>
+                <button class="return-btn" data-order-id="${o.id}" data-kod="${it.kod}" data-name="${it.isim}" data-qty="${it.qty}"
                   style="font-family:'JetBrains Mono'; font-size:10px; color:var(--ink-dim); background:none; border:1px solid var(--line); border-radius:10px; padding:3px 8px; cursor:pointer; flex-shrink:0;">İade Al</button>
               </div>`).join("")}
           </div>
@@ -416,13 +428,29 @@ function renderOrders(content){
       if (input === null) return;
       const qty = parseInt(input, 10);
       if (isNaN(qty) || qty <= 0){ toast("Geçersiz adet"); return; }
+      if (qty > maxQty){ toast("İade adedi sipariş adedinden fazla olamaz"); return; }
       try{
-        const ref = doc(db, "products", btn.dataset.kod);
-        const snap = await getDoc(ref);
-        const current = snap.exists() ? (snap.data().stok || 0) : 0;
-        await updateDoc(ref, { stok: current + qty });
-        toast(`${qty} adet stoğa eklendi`);
-      }catch(e){ toast("Stok güncellenemedi"); }
+        const orderRef = doc(db, "orders", btn.dataset.orderId);
+        const orderSnap = await getDoc(orderRef);
+        if (!orderSnap.exists()){ toast("Sipariş bulunamadı"); return; }
+        const items = (orderSnap.data().items || []).map(it=>{
+          if (it.kod === btn.dataset.kod){
+            return { ...it, qty: Math.max(0, it.qty - qty), returned: (it.returned||0) + qty };
+          }
+          return it;
+        });
+        await updateDoc(orderRef, { items });
+
+        const productRef = doc(db, "products", btn.dataset.kod);
+        const productSnap = await getDoc(productRef);
+        const current = productSnap.exists() ? (productSnap.data().stok || 0) : 0;
+        await updateDoc(productRef, { stok: current + qty });
+
+        toast(`${qty} adet iade alındı, stoğa eklendi`);
+      }catch(e){
+        console.error(e);
+        toast("İşlem başarısız");
+      }
     });
   });
 }
@@ -476,6 +504,63 @@ function renderSales(content){
       </div>
     `).join("")}
   `;
+}
+
+/* ================= TAB: BALANCE ================= */
+function renderBalance(content){
+  if (state.loadingOrders || state.loadingSettings){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+
+  let pendingQty = 0, soldQty = 0, returnedQty = 0;
+  state.orders.forEach(o=>{
+    const items = o.items || [];
+    const qtySum = items.reduce((a,it)=>a + (it.qty||0), 0);
+    const retSum = items.reduce((a,it)=>a + (it.returned||0), 0);
+    returnedQty += retSum;
+    if ((o.status||"Yeni") === "Tamamlandı") soldQty += qtySum;
+    else pendingQty += qtySum;
+  });
+  const price = state.unitPrice || 0;
+  const totalBalance = soldQty * price;
+
+  content.innerHTML = `
+    <div class="section-title">Bakiye</div>
+    <div class="catalog-form">
+      <div class="form-row">
+        <label style="display:flex; align-items:center; font-size:12.5px; color:var(--ink-dim); white-space:nowrap;">Birim Fiyat (TL)</label>
+        <input id="unit-price-input" type="number" min="0" step="1" value="${price}" style="max-width:100px;">
+      </div>
+      <button class="btn secondary" id="save-price-btn" style="width:100%;">Fiyatı Kaydet</button>
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-name">Bekleyen (Yeni) adet</div>
+      <div class="summary-count" style="width:auto;">${pendingQty}</div>
+    </div>
+    <div class="summary-row">
+      <div class="summary-name">Tamamlanan (satılan) adet</div>
+      <div class="summary-count" style="width:auto;">${soldQty}</div>
+    </div>
+    <div class="summary-row">
+      <div class="summary-name">İade edilen adet</div>
+      <div class="summary-count" style="width:auto;">${returnedQty}</div>
+    </div>
+    <div class="summary-row" style="border-top:1px solid var(--line); margin-top:8px; padding-top:14px;">
+      <div class="summary-name" style="font-family:'Indie Flower'; font-size:22px;">Toplam Bakiye</div>
+      <div class="summary-count" style="width:auto; font-size:18px; color:var(--green);">${totalBalance.toLocaleString('tr-TR')} TL</div>
+    </div>
+  `;
+
+  document.getElementById("save-price-btn").addEventListener("click", async ()=>{
+    let val = parseFloat(document.getElementById("unit-price-input").value);
+    if (isNaN(val) || val < 0) val = 0;
+    try{
+      await setDoc(doc(db, "settings", "pricing"), { unitPrice: val });
+      toast("Fiyat güncellendi");
+    }catch(e){
+      console.error(e);
+      toast("Kaydedilemedi");
+    }
+  });
 }
 
 
