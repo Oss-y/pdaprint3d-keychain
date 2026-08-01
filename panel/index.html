@@ -426,8 +426,51 @@ function renderOrders(content){
   `;
   content.querySelectorAll(".status-pill").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
-      const newStatus = nextStatus(btn.dataset.status);
-      try{ await updateDoc(doc(db, "orders", btn.dataset.id), { status: newStatus }); }
+      const current = btn.dataset.status;
+      const newStatus = nextStatus(current);
+      const orderId = btn.dataset.id;
+
+      if (current === "Teslim Edildi" && newStatus === "Satıldı"){
+        try{
+          const orderRef = doc(db, "orders", orderId);
+          const orderSnap = await getDoc(orderRef);
+          if (!orderSnap.exists()){ toast("Sipariş bulunamadı"); return; }
+          const items = orderSnap.data().items || [];
+          const updatedItems = [];
+          const stockAdds = [];
+
+          for (const it of items){
+            const input = prompt(`"${it.isim}" için iade var mı? Varsa adet gir, yoksa 0 bırak.`, "0");
+            if (input === null){ toast("İşlem iptal edildi, satıldı olarak işaretlenmedi."); return; }
+            let retQty = parseInt(input, 10);
+            if (isNaN(retQty) || retQty < 0) retQty = 0;
+            if (retQty > it.qty) retQty = it.qty;
+            if (retQty > 0){
+              updatedItems.push({ ...it, qty: it.qty - retQty, returned: (it.returned||0) + retQty });
+              stockAdds.push({ kod: it.kod, qty: retQty });
+            } else {
+              updatedItems.push(it);
+            }
+          }
+
+          for (const s of stockAdds){
+            const productRef = doc(db, "products", s.kod);
+            const productSnap = await getDoc(productRef);
+            const cur = productSnap.exists() ? (productSnap.data().stok || 0) : 0;
+            await updateDoc(productRef, { stok: cur + s.qty });
+          }
+
+          await updateDoc(orderRef, { items: updatedItems, status: newStatus });
+          const totalReturned = stockAdds.reduce((a,s)=>a+s.qty,0);
+          toast(totalReturned > 0 ? `Satıldı olarak işaretlendi (${totalReturned} adet iade alındı)` : "Satıldı olarak işaretlendi");
+        }catch(e){
+          console.error(e);
+          toast("İşlem başarısız, tekrar dene.");
+        }
+        return;
+      }
+
+      try{ await updateDoc(doc(db, "orders", orderId), { status: newStatus }); }
       catch(e){ toast("Güncellenemedi, tekrar dene."); }
     });
   });
