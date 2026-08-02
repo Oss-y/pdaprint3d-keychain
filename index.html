@@ -278,7 +278,7 @@ import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, collection, addDoc, doc, runTransaction, onSnapshot, query, orderBy, serverTimestamp
+  getFirestore, collection, addDoc, setDoc, doc, runTransaction, onSnapshot, query, orderBy, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -302,11 +302,17 @@ const LOGO_SRC = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAsoAAAGRCAIAAADz
 const PALETTE = ["#ff5a36","#2dd4bf","#ffc93c","#a78bfa","#fb7ba2","#4ea1ff"];
 const IMAGE_BASE = "https://raw.githubusercontent.com/Oss-y/pdaprint3d-keychain/main/";
 
+let SHOPS = [];
 function startCatalogListener(){
   const q = query(collection(db, "products"), orderBy("kod"));
   onSnapshot(q, snap=>{
     CATALOG = snap.docs.map(d=>({ kod: d.id, isim: d.data().isim, stok: d.data().stok ?? 0, renk: null }));
     if (state.view === "catalog" || state.view === "tray") render();
+  });
+  const shopsQ = query(collection(db, "shops"), orderBy("name"));
+  onSnapshot(shopsQ, snap=>{
+    SHOPS = snap.docs.map(d=>({ id: d.id, name: d.data().name }));
+    if (state.view === "contact") render();
   });
 }
 function colorFor(kod){
@@ -325,7 +331,7 @@ let state = {
   cart: {}, // kod -> qty
   search: "",
   searchOpen: false,
-  contact: { shopName:"", note:"" },
+  contact: { note:"" },
   lastError: null,
 };
 
@@ -581,8 +587,13 @@ function renderContact(){
         <button class="close-x" id="close-contact">✕</button>
       </div>
       <div class="field">
-        <label>Dükkan Adı</label>
-        <input id="f-shop" placeholder="Ürünlerin teslim edileceği dükkan" value="${state.contact.shopName||''}">
+        <label>Dükkan</label>
+        <select id="f-shop-select" style="width:100%; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:12px 14px; color:var(--ink); font-family:'Inter'; font-size:14.5px; outline:none;">
+          <option value="">Dükkan seç...</option>
+          ${SHOPS.map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}
+          <option value="__new__">+ Yeni dükkan ekle</option>
+        </select>
+        <input id="f-shop-new" placeholder="Yeni dükkan adı" style="display:none; margin-top:8px; width:100%; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:12px 14px; color:var(--ink); font-family:'Inter'; font-size:14.5px; outline:none;">
       </div>
       <div class="field">
         <label>Not (opsiyonel)</label>
@@ -598,33 +609,55 @@ function renderContact(){
   overlay.querySelector("#close-contact").addEventListener("click", ()=>overlay.remove());
   overlay.querySelector("#back-to-tray").addEventListener("click", ()=>{ overlay.remove(); state.view="tray"; render(); });
 
+  const shopSelect = overlay.querySelector("#f-shop-select");
+  const shopNewInput = overlay.querySelector("#f-shop-new");
+  shopSelect.addEventListener("change", ()=>{
+    shopNewInput.style.display = shopSelect.value === "__new__" ? "block" : "none";
+    if (shopSelect.value === "__new__") shopNewInput.focus();
+  });
+
   overlay.querySelector("#submit-request").addEventListener("click", async ()=>{
-    const shopName = overlay.querySelector("#f-shop").value.trim();
     const note = overlay.querySelector("#f-note").value.trim();
     const errEl = overlay.querySelector("#form-err");
-    if (!shopName){ errEl.textContent = "Lütfen dükkan adını gir."; return; }
+    let shopId = shopSelect.value;
+    let shopName = "";
+
+    if (!shopId){ errEl.textContent = "Lütfen bir dükkan seç."; return; }
 
     const btn = overlay.querySelector("#submit-request");
     btn.disabled = true; btn.textContent = "Gönderiliyor...";
 
-    const order = {
-      employee: currentUsername(),
-      shopName,
-      note,
-      items: cartItems().map(p=>({kod:p.kod, isim:p.isim, qty:p.qty})),
-      status: "Bekleyen",
-      createdAt: serverTimestamp(),
-    };
-
     try{
+      if (shopId === "__new__"){
+        const newName = shopNewInput.value.trim();
+        if (!newName){ errEl.textContent = "Yeni dükkan adını gir."; btn.disabled=false; btn.textContent="Talebi Gönder"; return; }
+        const shopRef = doc(collection(db, "shops"));
+        await setDoc(shopRef, { name: newName });
+        shopId = shopRef.id;
+        shopName = newName;
+      } else {
+        const found = SHOPS.find(s=>s.id===shopId);
+        shopName = found ? found.name : "";
+      }
+
+      const order = {
+        employee: currentUsername(),
+        shopId, shopName,
+        note,
+        items: cartItems().map(p=>({kod:p.kod, isim:p.isim, qty:p.qty})),
+        status: "Bekleyen",
+        createdAt: serverTimestamp(),
+      };
+
       await addDoc(collection(db, "orders"), order);
       await decrementStock(order.items);
       state.cart = {};
-      state.contact = { shopName:"", note:"" };
+      state.contact = { note:"" };
       overlay.remove();
       state.view = "confirm";
       render();
     }catch(err){
+      console.error(err);
       errEl.textContent = "Kaydedilirken bir sorun oluştu, tekrar dene.";
       btn.disabled = false; btn.textContent = "Talebi Gönder";
     }
