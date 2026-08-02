@@ -173,7 +173,7 @@ import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, getDoc,
+  getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, getDoc, addDoc,
   onSnapshot, query, orderBy, serverTimestamp, getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -227,13 +227,18 @@ let state = {
   stockSubTab: "Ürün",
   unitPrice: 50,
   loadingSettings: true,
+  shops: [],
+  loadingShops: true,
+  shopCollections: [],
+  loadingCollections: true,
+  selectedShopId: null,
   loadingOrders: true,
   loadingProducts: true,
   loadingFilaments: true,
 };
 
 const root = document.getElementById("app");
-let unsubOrders = null, unsubProducts = null, unsubFilaments = null, unsubSettings = null;
+let unsubOrders = null, unsubProducts = null, unsubFilaments = null, unsubSettings = null, unsubShops = null, unsubCollections = null;
 
 function toast(msg){
   const t = document.createElement("div");
@@ -268,7 +273,9 @@ onAuthStateChanged(auth, async (user)=>{
     if (unsubProducts) unsubProducts();
     if (unsubFilaments) unsubFilaments();
     if (unsubSettings) unsubSettings();
-    state.orders = []; state.products = []; state.filaments = [];
+    if (unsubShops) unsubShops();
+    if (unsubCollections) unsubCollections();
+    state.orders = []; state.products = []; state.filaments = []; state.shops = []; state.shopCollections = [];
   }
   render();
 });
@@ -304,6 +311,22 @@ function startListeners(){
     state.loadingSettings = false;
     render();
   }, err=>{ console.error(err); state.loadingSettings = false; render(); });
+
+  state.loadingShops = true;
+  const shopsQ = query(collection(db, "shops"), orderBy("name"));
+  unsubShops = onSnapshot(shopsQ, snap=>{
+    state.shops = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    state.loadingShops = false;
+    render();
+  }, err=>{ console.error(err); state.loadingShops = false; render(); });
+
+  state.loadingCollections = true;
+  const collectionsQ = query(collection(db, "shopCollections"), orderBy("createdAt", "desc"));
+  unsubCollections = onSnapshot(collectionsQ, snap=>{
+    state.shopCollections = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    state.loadingCollections = false;
+    render();
+  }, err=>{ console.error(err); state.loadingCollections = false; render(); });
 }
 
 /* ================= RENDER: LOGIN ================= */
@@ -340,6 +363,7 @@ function renderLogin(){
 function renderShell(){
   const tabs = [
     {key:"orders", label:"Siparişler"},
+    {key:"shops", label:"Dükkanlar"},
     {key:"sales", label:"Satış"},
     {key:"stock", label:"Stok"},
     {key:"employees", label:"Çalışanlar"},
@@ -361,15 +385,16 @@ function renderShell(){
   const content = document.getElementById("tab-content");
   if (state.tab === "orders") renderOrders(content);
   else if (state.tab === "stock") renderStockHub(content);
+  else if (state.tab === "shops") renderShops(content);
   else if (state.tab === "sales") renderSales(content);
   else if (state.tab === "employees") renderEmployees(content);
 }
 
-const STATUS_STAGES = ["Bekleyen", "Teslim Edildi", "Satıldı"];
+const STATUS_STAGES = ["Bekleyen", "Teslim Edildi"];
 function statusOf(o){
   const s = o.status;
   if (!s || s === "Yeni") return "Bekleyen";
-  if (s === "Tamamlandı") return "Teslim Edildi";
+  if (s === "Tamamlandı" || s === "Satıldı") return "Teslim Edildi";
   return s;
 }
 function nextStatus(current){
@@ -382,7 +407,7 @@ function renderOrders(content){
   if (state.loadingOrders){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
   const filter = state.orderFilter || "Bekleyen";
   const filtered = state.orders.filter(o => statusOf(o) === filter);
-  const pillClass = { "Bekleyen":"yeni", "Teslim Edildi":"teslim", "Satıldı":"tamamlandi" };
+  const pillClass = { "Bekleyen":"yeni", "Teslim Edildi":"tamamlandi" };
   content.innerHTML = `
     <div class="section-title">Siparişler</div>
     <div style="display:flex; gap:8px; margin:-8px 0 16px;">
@@ -421,51 +446,8 @@ function renderOrders(content){
   `;
   content.querySelectorAll(".status-pill").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
-      const current = btn.dataset.status;
-      const newStatus = nextStatus(current);
-      const orderId = btn.dataset.id;
-
-      if (current === "Teslim Edildi" && newStatus === "Satıldı"){
-        try{
-          const orderRef = doc(db, "orders", orderId);
-          const orderSnap = await getDoc(orderRef);
-          if (!orderSnap.exists()){ toast("Sipariş bulunamadı"); return; }
-          const items = orderSnap.data().items || [];
-          const updatedItems = [];
-          const stockAdds = [];
-
-          for (const it of items){
-            const input = prompt(`"${it.isim}" için iade var mı? Varsa adet gir, yoksa 0 bırak.`, "0");
-            if (input === null){ toast("İşlem iptal edildi, satıldı olarak işaretlenmedi."); return; }
-            let retQty = parseInt(input, 10);
-            if (isNaN(retQty) || retQty < 0) retQty = 0;
-            if (retQty > it.qty) retQty = it.qty;
-            if (retQty > 0){
-              updatedItems.push({ ...it, qty: it.qty - retQty, returned: (it.returned||0) + retQty });
-              stockAdds.push({ kod: it.kod, qty: retQty });
-            } else {
-              updatedItems.push(it);
-            }
-          }
-
-          for (const s of stockAdds){
-            const productRef = doc(db, "products", s.kod);
-            const productSnap = await getDoc(productRef);
-            const cur = productSnap.exists() ? (productSnap.data().stok || 0) : 0;
-            await updateDoc(productRef, { stok: cur + s.qty });
-          }
-
-          await updateDoc(orderRef, { items: updatedItems, status: newStatus });
-          const totalReturned = stockAdds.reduce((a,s)=>a+s.qty,0);
-          toast(totalReturned > 0 ? `Satıldı olarak işaretlendi (${totalReturned} adet iade alındı)` : "Satıldı olarak işaretlendi");
-        }catch(e){
-          console.error(e);
-          toast("İşlem başarısız, tekrar dene.");
-        }
-        return;
-      }
-
-      try{ await updateDoc(doc(db, "orders", orderId), { status: newStatus }); }
+      const newStatus = nextStatus(btn.dataset.status);
+      try{ await updateDoc(doc(db, "orders", btn.dataset.id), { status: newStatus }); }
       catch(e){ toast("Güncellenemedi, tekrar dene."); }
     });
   });
@@ -555,21 +537,25 @@ function renderProductStock(content){
 
 /* ================= TAB: SALES SUMMARY ================= */
 function renderSales(content){
-  if (state.loadingOrders || state.loadingSettings){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  if (state.loadingOrders || state.loadingSettings || state.loadingCollections){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
 
-  let pendingQty = 0, deliveredQty = 0, soldQty = 0;
+  let pendingQty = 0, deliveredQty = 0;
   state.orders.forEach(o=>{
     const qtySum = (o.items||[]).reduce((a,it)=>a + (it.qty||0), 0);
     const st = statusOf(o);
-    if (st === "Satıldı") soldQty += qtySum;
-    else if (st === "Teslim Edildi") deliveredQty += qtySum;
+    if (st === "Teslim Edildi") deliveredQty += qtySum;
     else pendingQty += qtySum;
   });
+
+  let soldQty = 0, totalCollected = 0;
+  state.shopCollections.forEach(c=>{
+    soldQty += (c.items||[]).reduce((a,it)=>a+(it.qty||0), 0);
+    totalCollected += (c.amount || 0);
+  });
   const price = state.unitPrice || 0;
-  const totalBalance = soldQty * price;
 
   const totals = {};
-  state.orders.filter(o=>statusOf(o)==="Satıldı").forEach(o=>(o.items||[]).forEach(it=>{
+  state.shopCollections.forEach(c=>(c.items||[]).forEach(it=>{
     totals[it.kod] = totals[it.kod] || { isim: it.isim, qty: 0 };
     totals[it.kod].qty += it.qty;
   }));
@@ -591,20 +577,20 @@ function renderSales(content){
       <div class="summary-count" style="width:auto;">${pendingQty}</div>
     </div>
     <div class="summary-row">
-      <div class="summary-name">Teslim edilen adet</div>
+      <div class="summary-name">Dükkanlarda duran (teslim edilen) adet</div>
       <div class="summary-count" style="width:auto;">${deliveredQty}</div>
     </div>
     <div class="summary-row">
-      <div class="summary-name">Satılan adet</div>
+      <div class="summary-name">Satılan adet (tahsilat yapılan)</div>
       <div class="summary-count" style="width:auto;">${soldQty}</div>
     </div>
     <div class="summary-row" style="border-top:1px solid var(--line); margin-top:8px; padding-top:14px;">
-      <div class="summary-name" style="font-family:'Indie Flower'; font-size:22px;">Toplam Bakiye</div>
-      <div class="summary-count" style="width:auto; font-size:18px; color:var(--green);">${totalBalance.toLocaleString('tr-TR')} TL</div>
+      <div class="summary-name" style="font-family:'Indie Flower'; font-size:22px;">Toplam Tahsilat</div>
+      <div class="summary-count" style="width:auto; font-size:18px; color:var(--green);">${totalCollected.toLocaleString('tr-TR')} TL</div>
     </div>
 
     <div class="section-title" style="margin-top:26px;">Ürün Bazında Satış</div>
-    ${rows.length===0 ? `<div class="empty-msg">Henüz satılan ürün yok.</div>` : rows.map((r,i)=>`
+    ${rows.length===0 ? `<div class="empty-msg">Henüz tahsilat kaydı yok.</div>` : rows.map((r,i)=>`
       <div class="summary-row">
         <div class="summary-rank">${i+1}</div>
         <div class="summary-name">${r.isim}</div>
@@ -868,6 +854,158 @@ function renderFilaments(content){
 }
 
 /* ================= TAB: EMPLOYEES ================= */
+/* ================= TAB: SHOPS ================= */
+function computeShopOnHand(shopId){
+  const delivered = {};
+  state.orders.filter(o=>o.shopId===shopId && statusOf(o)==="Teslim Edildi").forEach(o=>{
+    (o.items||[]).forEach(it=>{
+      delivered[it.kod] = delivered[it.kod] || { isim: it.isim, qty: 0 };
+      delivered[it.kod].qty += it.qty;
+    });
+  });
+  const sold = {};
+  state.shopCollections.filter(c=>c.shopId===shopId).forEach(c=>{
+    (c.items||[]).forEach(it=>{ sold[it.kod] = (sold[it.kod]||0) + it.qty; });
+  });
+  return Object.entries(delivered).map(([kod,v])=>({
+    kod, isim: v.isim, delivered: v.qty, sold: sold[kod]||0, onHand: v.qty - (sold[kod]||0)
+  })).sort((a,b)=>a.isim.localeCompare(b.isim));
+}
+
+function renderShops(content){
+  if (state.loadingOrders || state.loadingShops || state.loadingCollections){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+
+  if (state.selectedShopId){
+    renderShopDetail(content, state.selectedShopId);
+    return;
+  }
+
+  content.innerHTML = `
+    <div class="section-title">Dükkanlar</div>
+    ${state.shops.length===0 ? `<div class="empty-msg">Henüz dükkan yok. Çalışan uygulamasından bir teslimat girildiğinde otomatik eklenir.</div>` : state.shops.map(s=>{
+      const rows = computeShopOnHand(s.id);
+      const totalOnHand = rows.reduce((a,r)=>a+r.onHand,0);
+      return `
+        <div class="req-card shop-row" data-shop-id="${s.id}" style="cursor:pointer;">
+          <div class="req-top" style="margin-bottom:0;">
+            <div class="req-name">${s.name}</div>
+            <div style="font-family:'JetBrains Mono'; font-size:12px; color:${totalOnHand>0?'var(--ink)':'var(--ink-dim)'};">${totalOnHand} adet duruyor</div>
+          </div>
+        </div>`;
+    }).join("")}
+  `;
+  content.querySelectorAll(".shop-row").forEach(el=>{
+    el.addEventListener("click", ()=>{ state.selectedShopId = el.dataset.shopId; render(); });
+  });
+}
+
+function renderShopDetail(content, shopId){
+  const shop = state.shops.find(s=>s.id===shopId);
+  if (!shop){ state.selectedShopId = null; renderShops(content); return; }
+  const rows = computeShopOnHand(shopId);
+  const history = state.shopCollections.filter(c=>c.shopId===shopId);
+  const totalCollected = history.reduce((a,c)=>a+(c.amount||0),0);
+
+  content.innerHTML = `
+    <button class="back-link" id="shop-back" style="margin-bottom:12px;">← Dükkanlar</button>
+    <div class="section-title">${shop.name}</div>
+
+    <div class="section-title" style="font-size:16px; margin-top:0;">Dükkanda Duran</div>
+    ${rows.length===0 ? `<div class="empty-msg">Bu dükkana henüz teslimat yapılmamış.</div>` : rows.map(r=>`
+      <div class="stock-row">
+        <div class="stock-info">
+          <div class="stock-kod">${r.kod} · teslim ${r.delivered} · satılan ${r.sold}</div>
+          <div class="stock-name">${r.isim}</div>
+        </div>
+        <div style="font-family:'JetBrains Mono'; font-size:14px; color:${r.onHand>0?'var(--ink)':'var(--ink-dim)'};">${r.onHand}</div>
+      </div>
+    `).join("")}
+
+    <button class="btn secondary" id="new-collection-btn" style="width:100%; margin-top:16px;">+ Yeni Tahsilat Kaydı</button>
+
+    <div class="section-title" style="font-size:16px; margin-top:22px;">Tahsilat Geçmişi</div>
+    <div class="summary-row" style="border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:6px;">
+      <div class="summary-name">Toplam Tahsilat</div>
+      <div class="summary-count" style="width:auto; color:var(--green);">${totalCollected.toLocaleString('tr-TR')} TL</div>
+    </div>
+    ${history.length===0 ? `<div class="empty-msg">Henüz tahsilat kaydı yok.</div>` : history.map(c=>{
+      const dt = c.createdAt && c.createdAt.toDate ? c.createdAt.toDate() : new Date();
+      return `
+        <div class="req-card">
+          <div class="req-date" style="margin-bottom:6px;">${dt.toLocaleString('tr-TR')}</div>
+          <div class="req-items">${(c.items||[]).map(it=>`<b>${it.qty}×</b> ${it.isim}`).join("<br>")}</div>
+          <div style="font-family:'JetBrains Mono'; font-size:12px; color:var(--green); margin-top:6px;">${(c.amount||0).toLocaleString('tr-TR')} TL</div>
+        </div>`;
+    }).join("")}
+  `;
+
+  document.getElementById("shop-back").addEventListener("click", ()=>{ state.selectedShopId = null; render(); });
+
+  document.getElementById("new-collection-btn").addEventListener("click", ()=>{
+    openCollectionForm(shop, rows);
+  });
+}
+
+function openCollectionForm(shop, rows){
+  const sellable = rows.filter(r=>r.onHand > 0);
+  const overlay = document.createElement("div");
+  overlay.className = "overlay";
+  overlay.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-head">
+        <div class="sheet-title">Tahsilat Kaydı — ${shop.name}</div>
+        <button class="close-x" id="cf-close">✕</button>
+      </div>
+      ${sellable.length===0 ? `<div class="empty-msg">Dükkanda satılabilecek ürün yok.</div>` : sellable.map(r=>`
+        <div class="line-item" style="align-items:center;">
+          <div class="li-info">
+            <div class="li-name">${r.isim}</div>
+            <div class="li-kod">${r.kod} · dükkanda ${r.onHand}</div>
+          </div>
+          <input type="number" min="0" max="${r.onHand}" placeholder="0" data-kod="${r.kod}" data-isim="${r.isim}" data-max="${r.onHand}"
+            class="cf-qty-input" style="width:60px; text-align:center; background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:8px; color:var(--ink); font-family:'JetBrains Mono';">
+        </div>
+      `).join("")}
+      <div class="err" id="cf-err"></div>
+      <button class="cta-btn" id="cf-submit" style="background:var(--green); color:var(--bg);">Kaydı Kaydet</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", e=>{ if(e.target===overlay) overlay.remove(); });
+  overlay.querySelector("#cf-close").addEventListener("click", ()=>overlay.remove());
+
+  const submitBtn = overlay.querySelector("#cf-submit");
+  if (submitBtn) submitBtn.addEventListener("click", async ()=>{
+    const errEl = overlay.querySelector("#cf-err");
+    const items = [];
+    let invalid = false;
+    overlay.querySelectorAll(".cf-qty-input").forEach(inp=>{
+      let v = parseInt(inp.value, 10);
+      const max = parseInt(inp.dataset.max, 10);
+      if (isNaN(v) || v < 0) v = 0;
+      if (v > max) invalid = true;
+      if (v > 0) items.push({ kod: inp.dataset.kod, isim: inp.dataset.isim, qty: v });
+    });
+    if (invalid){ errEl.textContent = "Bir üründe dükkanda olandan fazla adet girildi."; return; }
+    if (items.length === 0){ errEl.textContent = "En az bir üründe adet gir."; return; }
+
+    submitBtn.disabled = true; submitBtn.textContent = "Kaydediliyor...";
+    const totalQty = items.reduce((a,it)=>a+it.qty,0);
+    const amount = totalQty * (state.unitPrice || 0);
+    try{
+      await addDoc(collection(db, "shopCollections"), {
+        shopId: shop.id, shopName: shop.name, items, amount, createdAt: serverTimestamp(),
+      });
+      toast(`Kaydedildi — ${amount.toLocaleString('tr-TR')} TL`);
+      overlay.remove();
+    }catch(e){
+      console.error(e);
+      errEl.textContent = "Kaydedilemedi, tekrar dene.";
+      submitBtn.disabled = false; submitBtn.textContent = "Kaydı Kaydet";
+    }
+  });
+}
+
 function renderEmployees(content){
   if (state.loadingOrders){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
   const stats = {};
@@ -875,9 +1013,7 @@ function renderEmployees(content){
     const emp = o.employee || "Bilinmiyor";
     stats[emp] = stats[emp] || { orderCount: 0, itemCount: 0 };
     stats[emp].orderCount += 1;
-    if (statusOf(o) === "Satıldı"){
-      stats[emp].itemCount += (o.items||[]).reduce((a,it)=>a+it.qty, 0);
-    }
+    stats[emp].itemCount += (o.items||[]).reduce((a,it)=>a+it.qty, 0);
   });
   const rows = Object.entries(stats).map(([name,v])=>({name, ...v})).sort((a,b)=>b.orderCount-a.orderCount);
 
@@ -896,7 +1032,7 @@ function renderEmployees(content){
       <div class="summary-row">
         <div class="summary-name">${r.name}</div>
         <div class="summary-count" style="width:auto;">${r.orderCount} sipariş</div>
-        <div class="summary-count">${r.itemCount} satıldı</div>
+        <div class="summary-count">${r.itemCount} teslim</div>
       </div>
     `).join("")}
   `;
