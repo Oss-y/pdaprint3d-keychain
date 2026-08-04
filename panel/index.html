@@ -562,7 +562,7 @@ function renderProductStock(content){
 
 /* ================= TAB: SALES SUMMARY ================= */
 function renderSales(content){
-  if (state.loadingOrders || state.loadingSettings || state.loadingCollections){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  if (state.loadingOrders || state.loadingCollections){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
 
   let pendingQty = 0, deliveredQty = 0;
   state.orders.forEach(o=>{
@@ -577,7 +577,6 @@ function renderSales(content){
     soldQty += (c.items||[]).reduce((a,it)=>a+(it.qty||0), 0);
     totalCollected += (c.amount || 0);
   });
-  const price = state.unitPrice || 0;
 
   const totals = {};
   state.shopCollections.forEach(c=>(c.items||[]).forEach(it=>{
@@ -589,13 +588,6 @@ function renderSales(content){
 
   content.innerHTML = `
     <div class="section-title">Satış</div>
-    <div class="catalog-form">
-      <div class="form-row">
-        <label style="display:flex; align-items:center; font-size:12.5px; color:var(--ink-dim); white-space:nowrap;">Birim Fiyat (TL)</label>
-        <input id="unit-price-input" type="number" min="0" step="1" value="${price}" style="max-width:100px;">
-      </div>
-      <button class="btn secondary" id="save-price-btn" style="width:100%;">Fiyatı Kaydet</button>
-    </div>
 
     <div class="summary-row">
       <div class="summary-name">Bekleyen adet</div>
@@ -624,18 +616,6 @@ function renderSales(content){
       </div>
     `).join("")}
   `;
-
-  document.getElementById("save-price-btn").addEventListener("click", async ()=>{
-    let val = parseFloat(document.getElementById("unit-price-input").value);
-    if (isNaN(val) || val < 0) val = 0;
-    try{
-      await setDoc(doc(db, "settings", "pricing"), { unitPrice: val });
-      toast("Fiyat güncellendi");
-    }catch(e){
-      console.error(e);
-      toast("Kaydedilemedi");
-    }
-  });
 }
 
 
@@ -954,7 +934,8 @@ function renderShopDetail(content, shopId){
               <div class="stock-kod">${r.kod} · dükkanda ${r.onHand}</div>
               <div class="stock-name">${r.isim}</div>
             </div>
-            <input type="number" min="0" max="${r.onHand}" placeholder="0" data-kod="${r.kod}" data-isim="${r.isim}" data-max="${r.onHand}" class="cf-qty-input">
+            <input type="number" min="0" max="${r.onHand}" placeholder="Adet" data-kod="${r.kod}" data-isim="${r.isim}" data-max="${r.onHand}" class="cf-qty-input">
+            <input type="number" min="0" step="1" placeholder="TL" value="50" data-kod="${r.kod}" class="cf-price-input">
           </div>
         `).join("")}
         <div class="err" id="cf-err"></div>
@@ -999,14 +980,18 @@ function renderShopDetail(content, shopId){
       const max = parseInt(inp.dataset.max, 10);
       if (isNaN(v) || v < 0) v = 0;
       if (v > max) invalid = true;
-      if (v > 0) items.push({ kod: inp.dataset.kod, isim: inp.dataset.isim, qty: v });
+      if (v > 0){
+        const priceInp = document.querySelector(`.cf-price-input[data-kod="${inp.dataset.kod}"]`);
+        let price = parseFloat(priceInp ? priceInp.value : 0);
+        if (isNaN(price) || price < 0) price = 0;
+        items.push({ kod: inp.dataset.kod, isim: inp.dataset.isim, qty: v, price });
+      }
     });
     if (invalid){ errEl.textContent = "Bir üründe dükkanda olandan fazla adet girildi."; return; }
     if (items.length === 0){ errEl.textContent = "En az bir üründe adet gir."; return; }
 
     submitBtn.disabled = true; submitBtn.textContent = "Kaydediliyor...";
-    const totalQty = items.reduce((a,it)=>a+it.qty,0);
-    const amount = totalQty * (state.unitPrice || 0);
+    const amount = items.reduce((a,it)=>a + it.qty*it.price, 0);
     try{
       await addDoc(collection(db, "shopCollections"), {
         shopId: shop.id, shopName: shop.name, items, amount, createdAt: serverTimestamp(),
