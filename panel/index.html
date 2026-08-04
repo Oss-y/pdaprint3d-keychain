@@ -257,6 +257,7 @@ let state = {
   loadingCollections: true,
   selectedShopId: null,
   showCollectForm: false,
+  showHistoricalForm: false,
   loadingOrders: true,
   loadingProducts: true,
   loadingFilaments: true,
@@ -878,7 +879,7 @@ function computeShopOnHand(shopId){
 }
 
 function renderShops(content){
-  if (state.loadingOrders || state.loadingShops || state.loadingCollections){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  if (state.loadingOrders || state.loadingShops || state.loadingCollections || state.loadingProducts){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
 
   if (state.selectedShopId){
     renderShopDetail(content, state.selectedShopId);
@@ -887,6 +888,8 @@ function renderShops(content){
 
   content.innerHTML = `
     <div class="section-title">Dükkanlar</div>
+    ${state.showHistoricalForm ? "" : `<button class="btn secondary" id="hist-open-btn" style="width:100%; margin-bottom:16px;">+ Geçmiş Teslimat Ekle</button>`}
+    ${state.showHistoricalForm ? renderHistoricalFormHtml() : ""}
     ${state.shops.length===0 ? `<div class="empty-msg">Henüz dükkan yok. Çalışan uygulamasından bir teslimat girildiğinde otomatik eklenir.</div>` : state.shops.map(s=>{
       const rows = computeShopOnHand(s.id);
       const totalOnHand = rows.reduce((a,r)=>a+r.onHand,0);
@@ -899,6 +902,109 @@ function renderShops(content){
   `;
   content.querySelectorAll(".shop-row").forEach(el=>{
     el.addEventListener("click", ()=>{ state.selectedShopId = el.dataset.shopId; state.showCollectForm = false; render(); });
+  });
+
+  const histOpenBtn = document.getElementById("hist-open-btn");
+  if (histOpenBtn) histOpenBtn.addEventListener("click", ()=>{ state.showHistoricalForm = true; render(); });
+  if (state.showHistoricalForm) wireHistoricalForm(content);
+}
+
+function renderHistoricalFormHtml(){
+  return `
+    <div class="catalog-form" style="margin-bottom:16px;">
+      <div class="section-title" style="font-size:15px; margin-bottom:10px;">Geçmiş Teslimat Ekle</div>
+      <div class="form-row">
+        <select id="hist-shop-select" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; color:var(--ink); font-size:13.5px;">
+          <option value="">Dükkan seç...</option>
+          ${state.shops.map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}
+          <option value="__unknown__">Bilinmeyen Dükkan</option>
+          <option value="__new__">+ Yeni dükkan ekle</option>
+        </select>
+      </div>
+      <div class="form-row" id="hist-new-shop-row" style="display:none;">
+        <input id="hist-new-shop-name" placeholder="Yeni dükkan adı">
+      </div>
+      <div style="max-height:260px; overflow-y:auto; margin:10px 0;">
+        ${state.products.map(p=>`
+          <div class="collect-row">
+            <div class="stock-info">
+              <div class="stock-kod">${p.kod}</div>
+              <div class="stock-name">${p.isim}</div>
+            </div>
+            <input type="number" min="0" placeholder="Adet" data-kod="${p.kod}" data-isim="${p.isim}" class="hist-qty-input">
+          </div>
+        `).join("")}
+      </div>
+      <div class="err" id="hist-err"></div>
+      <button class="btn" id="hist-submit" style="width:100%;">Kaydet (stoktan düşmez)</button>
+      <button class="btn secondary" id="hist-cancel" style="width:100%; margin-top:8px;">Vazgeç</button>
+    </div>
+  `;
+}
+
+function wireHistoricalForm(content){
+  const shopSelect = document.getElementById("hist-shop-select");
+  const newShopRow = document.getElementById("hist-new-shop-row");
+  if (shopSelect) shopSelect.addEventListener("change", ()=>{
+    newShopRow.style.display = shopSelect.value === "__new__" ? "flex" : "none";
+  });
+
+  const cancelBtn = document.getElementById("hist-cancel");
+  if (cancelBtn) cancelBtn.addEventListener("click", ()=>{ state.showHistoricalForm = false; render(); });
+
+  const submitBtn = document.getElementById("hist-submit");
+  if (submitBtn) submitBtn.addEventListener("click", async ()=>{
+    const errEl = document.getElementById("hist-err");
+    const shopVal = shopSelect.value;
+    if (!shopVal){ errEl.textContent = "Bir dükkan seç."; return; }
+
+    const items = [];
+    document.querySelectorAll(".hist-qty-input").forEach(inp=>{
+      let v = parseInt(inp.value, 10);
+      if (isNaN(v) || v < 0) v = 0;
+      if (v > 0) items.push({ kod: inp.dataset.kod, isim: inp.dataset.isim, qty: v });
+    });
+    if (items.length === 0){ errEl.textContent = "En az bir üründe adet gir."; return; }
+
+    submitBtn.disabled = true; submitBtn.textContent = "Kaydediliyor...";
+    try{
+      let shopId = shopVal, shopName = "";
+      if (shopVal === "__unknown__"){
+        let unknownShop = state.shops.find(s=>s.name === "Bilinmeyen Dükkan");
+        if (unknownShop){
+          shopId = unknownShop.id; shopName = unknownShop.name;
+        } else {
+          const ref = doc(collection(db, "shops"));
+          await setDoc(ref, { name: "Bilinmeyen Dükkan" });
+          shopId = ref.id; shopName = "Bilinmeyen Dükkan";
+        }
+      } else if (shopVal === "__new__"){
+        const newName = document.getElementById("hist-new-shop-name").value.trim();
+        if (!newName){ errEl.textContent = "Yeni dükkan adını gir."; submitBtn.disabled=false; submitBtn.textContent="Kaydet (stoktan düşmez)"; return; }
+        const ref = doc(collection(db, "shops"));
+        await setDoc(ref, { name: newName });
+        shopId = ref.id; shopName = newName;
+      } else {
+        const found = state.shops.find(s=>s.id===shopVal);
+        shopName = found ? found.name : "";
+      }
+
+      await addDoc(collection(db, "orders"), {
+        employee: currentUsername() + " (geçmiş kayıt)",
+        shopId, shopName,
+        note: "Sistem öncesi teslimat, geriye dönük eklendi",
+        items,
+        status: "Teslim Edildi",
+        createdAt: serverTimestamp(),
+      });
+      toast("Geçmiş teslimat eklendi, stok değişmedi");
+      state.showHistoricalForm = false;
+      render();
+    }catch(e){
+      console.error(e);
+      errEl.textContent = "Kaydedilemedi, tekrar dene.";
+      submitBtn.disabled = false; submitBtn.textContent = "Kaydet (stoktan düşmez)";
+    }
   });
 }
 
