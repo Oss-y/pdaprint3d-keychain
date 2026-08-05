@@ -258,6 +258,7 @@ let state = {
   selectedShopId: null,
   showCollectForm: false,
   showHistoricalForm: false,
+  histBulkMode: false,
   loadingOrders: true,
   loadingProducts: true,
   loadingFilaments: true,
@@ -910,6 +911,7 @@ function renderShops(content){
 }
 
 function renderHistoricalFormHtml(){
+  const bulk = state.histBulkMode;
   return `
     <div class="catalog-form" style="margin-bottom:16px;">
       <div class="section-title" style="font-size:15px; margin-bottom:10px;">Geçmiş Teslimat Ekle</div>
@@ -924,17 +926,31 @@ function renderHistoricalFormHtml(){
       <div class="form-row" id="hist-new-shop-row" style="display:none;">
         <input id="hist-new-shop-name" placeholder="Yeni dükkan adı">
       </div>
-      <div style="max-height:260px; overflow-y:auto; margin:10px 0;">
-        ${state.products.map(p=>`
-          <div class="collect-row">
-            <div class="stock-info">
-              <div class="stock-kod">${p.kod}</div>
-              <div class="stock-name">${p.isim}</div>
-            </div>
-            <input type="number" min="0" placeholder="Adet" data-kod="${p.kod}" data-isim="${p.isim}" class="hist-qty-input">
-          </div>
-        `).join("")}
+
+      <div style="display:flex; gap:8px; margin:12px 0;">
+        <button type="button" class="tab-btn ${!bulk?'active':''}" id="hist-mode-product" style="flex:1;">Ürün ürün</button>
+        <button type="button" class="tab-btn ${bulk?'active':''}" id="hist-mode-bulk" style="flex:1;">Sadece toplam adet</button>
       </div>
+
+      ${bulk ? `
+        <div class="form-row">
+          <input id="hist-bulk-qty" type="number" min="0" placeholder="Toplam adet (ürün ayırt etmeden)">
+        </div>
+        <div style="font-size:11.5px; color:var(--ink-dim); margin:-4px 0 4px;">Hangi üründen kaç adet olduğunu bilmiyorsan, sadece toplam sayıyı gir — "Karışık/Bilinmeyen Ürün" olarak kaydedilir.</div>
+      ` : `
+        <div style="max-height:260px; overflow-y:auto; margin:10px 0;">
+          ${state.products.map(p=>`
+            <div class="collect-row">
+              <div class="stock-info">
+                <div class="stock-kod">${p.kod}</div>
+                <div class="stock-name">${p.isim}</div>
+              </div>
+              <input type="number" min="0" placeholder="Adet" data-kod="${p.kod}" data-isim="${p.isim}" class="hist-qty-input">
+            </div>
+          `).join("")}
+        </div>
+      `}
+
       <div class="err" id="hist-err"></div>
       <button class="btn" id="hist-submit" style="width:100%;">Kaydet (stoktan düşmez)</button>
       <button class="btn secondary" id="hist-cancel" style="width:100%; margin-top:8px;">Vazgeç</button>
@@ -952,19 +968,31 @@ function wireHistoricalForm(content){
   const cancelBtn = document.getElementById("hist-cancel");
   if (cancelBtn) cancelBtn.addEventListener("click", ()=>{ state.showHistoricalForm = false; render(); });
 
+  const modeProductBtn = document.getElementById("hist-mode-product");
+  const modeBulkBtn = document.getElementById("hist-mode-bulk");
+  if (modeProductBtn) modeProductBtn.addEventListener("click", ()=>{ state.histBulkMode = false; render(); });
+  if (modeBulkBtn) modeBulkBtn.addEventListener("click", ()=>{ state.histBulkMode = true; render(); });
+
   const submitBtn = document.getElementById("hist-submit");
   if (submitBtn) submitBtn.addEventListener("click", async ()=>{
     const errEl = document.getElementById("hist-err");
+    errEl.textContent = "";
     const shopVal = shopSelect.value;
     if (!shopVal){ errEl.textContent = "Bir dükkan seç."; return; }
 
-    const items = [];
-    document.querySelectorAll(".hist-qty-input").forEach(inp=>{
-      let v = parseInt(inp.value, 10);
-      if (isNaN(v) || v < 0) v = 0;
-      if (v > 0) items.push({ kod: inp.dataset.kod, isim: inp.dataset.isim, qty: v });
-    });
-    if (items.length === 0){ errEl.textContent = "En az bir üründe adet gir."; return; }
+    let items = [];
+    if (state.histBulkMode){
+      let total = parseInt(document.getElementById("hist-bulk-qty").value, 10);
+      if (isNaN(total) || total <= 0){ errEl.textContent = "Geçerli bir toplam adet gir."; return; }
+      items = [{ kod: "GENEL", isim: "Karışık/Bilinmeyen Ürün", qty: total }];
+    } else {
+      document.querySelectorAll(".hist-qty-input").forEach(inp=>{
+        let v = parseInt(inp.value, 10);
+        if (isNaN(v) || v < 0) v = 0;
+        if (v > 0) items.push({ kod: inp.dataset.kod, isim: inp.dataset.isim, qty: v });
+      });
+      if (items.length === 0){ errEl.textContent = "En az bir üründe adet gir."; return; }
+    }
 
     submitBtn.disabled = true; submitBtn.textContent = "Kaydediliyor...";
     try{
@@ -999,10 +1027,11 @@ function wireHistoricalForm(content){
       });
       toast("Geçmiş teslimat eklendi, stok değişmedi");
       state.showHistoricalForm = false;
+      state.histBulkMode = false;
       render();
     }catch(e){
       console.error(e);
-      errEl.textContent = "Kaydedilemedi, tekrar dene.";
+      errEl.textContent = "Kaydedilemedi: " + (e && (e.code || e.message) ? (e.code || e.message) : "bilinmeyen hata");
       submitBtn.disabled = false; submitBtn.textContent = "Kaydet (stoktan düşmez)";
     }
   });
