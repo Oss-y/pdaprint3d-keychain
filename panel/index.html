@@ -1018,7 +1018,7 @@ function wireHistoricalForm(content){
       }
 
       await addDoc(collection(db, "orders"), {
-        employee: currentUsername() + " (geçmiş kayıt)",
+        employee: (state.user && state.user.email ? state.user.email.replace(EMAIL_DOMAIN, "") : "admin") + " (geçmiş kayıt)",
         shopId, shopName,
         note: "Sistem öncesi teslimat, geriye dönük eklendi",
         items,
