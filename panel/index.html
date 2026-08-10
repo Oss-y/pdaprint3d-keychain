@@ -1186,8 +1186,10 @@ function renderEmployees(content){
     const secondaryApp = initializeApp(firebaseConfig, "Secondary-" + Date.now());
     const secondaryAuth = getAuth(secondaryApp);
     try{
-      await createUserWithEmailAndPassword(secondaryAuth, uRaw + EMAIL_DOMAIN, p);
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, uRaw + EMAIL_DOMAIN, p);
+      const newUid = cred.user.uid;
       await signOut(secondaryAuth);
+      await setDoc(doc(db, "employees", newUid), { username: uRaw });
       toast(`"${uRaw}" eklendi`);
       document.getElementById("new-emp-user").value = "";
       document.getElementById("new-emp-pass").value = "";
