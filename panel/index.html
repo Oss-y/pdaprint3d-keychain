@@ -1103,13 +1103,28 @@ function renderShopDetail(content, shopId){
       const dt = c.createdAt && c.createdAt.toDate ? c.createdAt.toDate() : new Date();
       return `
         <div class="order-card">
-          <div class="order-date" style="margin-bottom:6px;">${dt.toLocaleString('tr-TR')}</div>
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px;">
+            <div class="order-date">${dt.toLocaleString('tr-TR')}</div>
+            <button class="del-btn undo-collect-btn" data-id="${c.id}" title="Geri al">✕ Geri Al</button>
+          </div>
           <div class="order-items">${(c.items||[]).map(it=>`<b>${it.qty}×</b> ${it.isim}`).join("<br>")}</div>
           <div style="font-family:'JetBrains Mono'; font-size:12px; color:var(--green); margin-top:6px;">${(c.amount||0).toLocaleString('tr-TR')} TL</div>
         </div>`;
     }).join("")}
   `;
 
+  content.querySelectorAll(".undo-collect-btn").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      if (!confirm("Bu tahsilat kaydı silinsin mi? Satılan adet dükkanın bakiyesine geri eklenecek.")) return;
+      try{
+        await deleteDoc(doc(db, "shopCollections", btn.dataset.id));
+        toast("Tahsilat kaydı geri alındı");
+      }catch(e){
+        console.error(e);
+        toast("Geri alınamadı, tekrar dene.");
+      }
+    });
+  });
   document.getElementById("shop-back").addEventListener("click", ()=>{ state.selectedShopId = null; state.showCollectForm = false; render(); });
 
   const openBtn = document.getElementById("new-collection-btn");
