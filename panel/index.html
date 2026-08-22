@@ -893,7 +893,10 @@ function renderShops(content){
     ${state.showHistoricalForm ? renderHistoricalFormHtml() : ""}
     ${state.shops.length===0 ? `<div class="empty-msg">Henüz dükkan yok. Çalışan uygulamasından bir teslimat girildiğinde otomatik eklenir.</div>` : state.shops.map(s=>{
       const rows = computeShopOnHand(s.id);
-      const totalOnHand = rows.reduce((a,r)=>a+r.onHand,0);
+      const delivered = rows.reduce((a,r)=>a+r.delivered,0);
+      const soldAgg = state.shopCollections.filter(c=>c.shopId===s.id)
+        .reduce((a,c)=>a+(c.items||[]).reduce((x,it)=>x+(it.qty||0),0), 0);
+      const totalOnHand = Math.max(0, delivered - soldAgg);
       return `
         <div class="shop-row" data-shop-id="${s.id}">
           <div class="shop-name">${s.name}</div>
@@ -1041,38 +1044,48 @@ function renderShopDetail(content, shopId){
   const shop = state.shops.find(s=>s.id===shopId);
   if (!shop){ state.selectedShopId = null; renderShops(content); return; }
   const rows = computeShopOnHand(shopId);
-  const sellable = rows.filter(r=>r.onHand > 0);
   const history = state.shopCollections.filter(c=>c.shopId===shopId);
   const totalCollected = history.reduce((a,c)=>a+(c.amount||0),0);
+  const totalDelivered = rows.reduce((a,r)=>a+r.delivered,0);
+  const totalSoldAgg = history.reduce((a,c)=>a+(c.items||[]).reduce((x,it)=>x+(it.qty||0),0), 0);
+  const totalOnHandNow = Math.max(0, totalDelivered - totalSoldAgg);
 
   content.innerHTML = `
     <button class="back-link" id="shop-back">← Dükkanlar</button>
     <div class="section-title">${shop.name}</div>
 
-    <div class="section-title" style="font-size:16px; margin-bottom:8px;">Dükkanda Duran</div>
+    <div class="summary-row">
+      <div class="summary-name">Toplam Teslim Edilen</div>
+      <div class="summary-count" style="width:auto;">${totalDelivered}</div>
+    </div>
+    <div class="summary-row">
+      <div class="summary-name">Toplam Satılan</div>
+      <div class="summary-count" style="width:auto;">${totalSoldAgg}</div>
+    </div>
+    <div class="summary-row" style="border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:14px;">
+      <div class="summary-name" style="font-family:'Indie Flower'; font-size:20px;">Dükkanda Duran</div>
+      <div class="summary-count" style="width:auto; font-size:16px;">${totalOnHandNow}</div>
+    </div>
+
+    <div class="section-title" style="font-size:16px; margin-bottom:8px;">Teslim Edilen Ürünler</div>
     ${rows.length===0 ? `<div class="empty-msg">Bu dükkana henüz teslimat yapılmamış.</div>` : rows.map(r=>`
       <div class="stock-row">
         <div class="stock-info">
-          <div class="stock-kod">${r.kod} · teslim ${r.delivered} · satılan ${r.sold}</div>
+          <div class="stock-kod">${r.kod}</div>
           <div class="stock-name">${r.isim}</div>
         </div>
-        <div style="font-family:'JetBrains Mono'; font-size:14px; color:${r.onHand>0?'var(--ink)':'var(--ink-dim)'};">${r.onHand}</div>
+        <div style="font-family:'JetBrains Mono'; font-size:14px; color:var(--ink);">${r.delivered}</div>
       </div>
     `).join("")}
 
     ${state.showCollectForm ? `
       <div class="catalog-form" style="margin-top:16px;">
-        <div class="section-title" style="font-size:15px; margin-bottom:10px;">Bu ziyarette kaçı satıldı?</div>
-        ${sellable.length===0 ? `<div class="empty-msg">Dükkanda satılabilecek ürün yok.</div>` : sellable.map(r=>`
-          <div class="collect-row">
-            <div class="stock-info">
-              <div class="stock-kod">${r.kod} · dükkanda ${r.onHand}</div>
-              <div class="stock-name">${r.isim}</div>
-            </div>
-            <input type="number" min="0" max="${r.onHand}" placeholder="Adet" data-kod="${r.kod}" data-isim="${r.isim}" data-max="${r.onHand}" class="cf-qty-input">
-            <input type="number" min="0" step="1" placeholder="TL" value="50" data-kod="${r.kod}" class="cf-price-input">
-          </div>
-        `).join("")}
+        <div class="section-title" style="font-size:15px; margin-bottom:10px;">Bu ziyarette kaç adet satıldı?</div>
+        <div class="form-row">
+          <input type="number" min="0" max="${totalOnHandNow}" placeholder="Satılan adet" id="cf-qty-input">
+          <input type="number" min="0" step="1" placeholder="Birim Fiyat (TL)" value="50" id="cf-price-input">
+        </div>
+        <div style="font-size:11.5px; color:var(--ink-dim); margin:-4px 0 4px;">Dükkanda toplam ${totalOnHandNow} adet duruyor. Hangi üründen olduğunu ayırt etmeden toplam satılan sayıyı gir.</div>
         <div class="err" id="cf-err"></div>
         <button class="btn" id="cf-submit" style="width:100%; margin-top:10px;">Kaydı Kaydet</button>
         <button class="btn secondary" id="cf-cancel" style="width:100%; margin-top:8px;">Vazgeç</button>
@@ -1108,25 +1121,15 @@ function renderShopDetail(content, shopId){
   const submitBtn = document.getElementById("cf-submit");
   if (submitBtn) submitBtn.addEventListener("click", async ()=>{
     const errEl = document.getElementById("cf-err");
-    const items = [];
-    let invalid = false;
-    document.querySelectorAll(".cf-qty-input").forEach(inp=>{
-      let v = parseInt(inp.value, 10);
-      const max = parseInt(inp.dataset.max, 10);
-      if (isNaN(v) || v < 0) v = 0;
-      if (v > max) invalid = true;
-      if (v > 0){
-        const priceInp = document.querySelector(`.cf-price-input[data-kod="${inp.dataset.kod}"]`);
-        let price = parseFloat(priceInp ? priceInp.value : 0);
-        if (isNaN(price) || price < 0) price = 0;
-        items.push({ kod: inp.dataset.kod, isim: inp.dataset.isim, qty: v, price });
-      }
-    });
-    if (invalid){ errEl.textContent = "Bir üründe dükkanda olandan fazla adet girildi."; return; }
-    if (items.length === 0){ errEl.textContent = "En az bir üründe adet gir."; return; }
+    let qty = parseInt(document.getElementById("cf-qty-input").value, 10);
+    let price = parseFloat(document.getElementById("cf-price-input").value);
+    if (isNaN(qty) || qty <= 0){ errEl.textContent = "Geçerli bir adet gir."; return; }
+    if (qty > totalOnHandNow){ errEl.textContent = "Dükkanda olandan fazla adet girildi."; return; }
+    if (isNaN(price) || price < 0) price = 0;
 
     submitBtn.disabled = true; submitBtn.textContent = "Kaydediliyor...";
-    const amount = items.reduce((a,it)=>a + it.qty*it.price, 0);
+    const amount = qty * price;
+    const items = [{ kod: "GENEL", isim: "Karışık/Bilinmeyen Ürün", qty, price }];
     try{
       await addDoc(collection(db, "shopCollections"), {
         shopId: shop.id, shopName: shop.name, items, amount, createdAt: serverTimestamp(),
