@@ -580,13 +580,14 @@ function renderSales(content){
     totalCollected += (c.amount || 0);
   });
 
-  const totals = {};
-  state.shopCollections.forEach(c=>(c.items||[]).forEach(it=>{
-    totals[it.kod] = totals[it.kod] || { isim: it.isim, qty: 0 };
-    totals[it.kod].qty += it.qty;
-  }));
-  const rows = Object.entries(totals).map(([kod,v])=>({kod, ...v})).sort((a,b)=>b.qty-a.qty);
-  const max = rows.length ? rows[0].qty : 1;
+  const shopTotals = {};
+  state.shopCollections.forEach(c=>{
+    const key = c.shopId || c.shopName || "Bilinmiyor";
+    shopTotals[key] = shopTotals[key] || { name: c.shopName || "Bilinmiyor", amount: 0 };
+    shopTotals[key].amount += (c.amount || 0);
+  });
+  const shopRows = Object.values(shopTotals).sort((a,b)=>b.amount-a.amount);
+  const maxAmount = shopRows.length ? shopRows[0].amount : 1;
 
   content.innerHTML = `
     <div class="section-title">Satış</div>
@@ -608,13 +609,13 @@ function renderSales(content){
       <div class="summary-count" style="width:auto; font-size:18px; color:var(--green);">${totalCollected.toLocaleString('tr-TR')} TL</div>
     </div>
 
-    <div class="section-title" style="margin-top:26px;">Ürün Bazında Satış</div>
-    ${rows.length===0 ? `<div class="empty-msg">Henüz tahsilat kaydı yok.</div>` : rows.map((r,i)=>`
+    <div class="section-title" style="margin-top:26px;">Dükkan Bazında Tahsilat</div>
+    ${shopRows.length===0 ? `<div class="empty-msg">Henüz tahsilat kaydı yok.</div>` : shopRows.map((r,i)=>`
       <div class="summary-row">
         <div class="summary-rank">${i+1}</div>
-        <div class="summary-name">${r.isim}</div>
-        <div class="summary-bar-wrap"><div class="summary-bar" style="width:${Math.max(6,(r.qty/max)*100)}%"></div></div>
-        <div class="summary-count">${r.qty}</div>
+        <div class="summary-name">${r.name}</div>
+        <div class="summary-bar-wrap"><div class="summary-bar" style="width:${Math.max(6,(r.amount/maxAmount)*100)}%"></div></div>
+        <div class="summary-count" style="width:auto;">${r.amount.toLocaleString('tr-TR')} TL</div>
       </div>
     `).join("")}
   `;
