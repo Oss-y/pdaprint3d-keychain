@@ -257,6 +257,7 @@ let state = {
   loadingCollections: true,
   selectedShopId: null,
   showCollectForm: false,
+  showShopReturnForm: false,
   showHistoricalForm: false,
   histBulkMode: false,
   loadingOrders: true,
@@ -1091,8 +1092,27 @@ function renderShopDetail(content, shopId){
         <button class="btn" id="cf-submit" style="width:100%; margin-top:10px;">Kaydı Kaydet</button>
         <button class="btn secondary" id="cf-cancel" style="width:100%; margin-top:8px;">Vazgeç</button>
       </div>
+    ` : state.showShopReturnForm ? `
+      <div class="catalog-form" style="margin-top:16px;">
+        <div class="section-title" style="font-size:15px; margin-bottom:10px;">Dükkandan İade Al</div>
+        ${rows.filter(r=>r.delivered>0).length===0 ? `<div class="empty-msg">Bu dükkana teslim edilmiş ürün yok.</div>` : rows.filter(r=>r.delivered>0).map(r=>`
+          <div class="collect-row">
+            <div class="stock-info">
+              <div class="stock-kod">${r.kod} · teslim ${r.delivered}</div>
+              <div class="stock-name">${r.isim}</div>
+            </div>
+            <input type="number" min="0" max="${r.delivered}" placeholder="Adet" data-kod="${r.kod}" data-isim="${r.isim}" data-max="${r.delivered}" class="sr-qty-input">
+          </div>
+        `).join("")}
+        <div class="err" id="sr-err"></div>
+        <button class="btn" id="sr-submit" style="width:100%; margin-top:10px;">İadeyi Kaydet</button>
+        <button class="btn secondary" id="sr-cancel" style="width:100%; margin-top:8px;">Vazgeç</button>
+      </div>
     ` : `
-      <button class="btn secondary" id="new-collection-btn" style="width:100%; margin-top:16px;">+ Yeni Tahsilat Kaydı</button>
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button class="btn secondary" id="new-collection-btn" style="flex:1;">+ Yeni Tahsilat Kaydı</button>
+        <button class="btn secondary" id="shop-return-btn" style="flex:1;">İade Al</button>
+      </div>
     `}
 
     <div class="section-title" style="font-size:16px; margin-top:24px;">Tahsilat Geçmişi</div>
@@ -1126,13 +1146,72 @@ function renderShopDetail(content, shopId){
       }
     });
   });
-  document.getElementById("shop-back").addEventListener("click", ()=>{ state.selectedShopId = null; state.showCollectForm = false; render(); });
+  document.getElementById("shop-back").addEventListener("click", ()=>{ state.selectedShopId = null; state.showCollectForm = false; state.showShopReturnForm = false; render(); });
 
   const openBtn = document.getElementById("new-collection-btn");
   if (openBtn) openBtn.addEventListener("click", ()=>{ state.showCollectForm = true; render(); });
 
   const cancelBtn = document.getElementById("cf-cancel");
   if (cancelBtn) cancelBtn.addEventListener("click", ()=>{ state.showCollectForm = false; render(); });
+
+  const returnOpenBtn = document.getElementById("shop-return-btn");
+  if (returnOpenBtn) returnOpenBtn.addEventListener("click", ()=>{ state.showShopReturnForm = true; render(); });
+
+  const srCancelBtn = document.getElementById("sr-cancel");
+  if (srCancelBtn) srCancelBtn.addEventListener("click", ()=>{ state.showShopReturnForm = false; render(); });
+
+  const srSubmitBtn = document.getElementById("sr-submit");
+  if (srSubmitBtn) srSubmitBtn.addEventListener("click", async ()=>{
+    const errEl = document.getElementById("sr-err");
+    errEl.textContent = "";
+    const toReturn = [];
+    let invalid = false;
+    document.querySelectorAll(".sr-qty-input").forEach(inp=>{
+      let v = parseInt(inp.value, 10);
+      const max = parseInt(inp.dataset.max, 10);
+      if (isNaN(v) || v < 0) v = 0;
+      if (v > max) invalid = true;
+      if (v > 0) toReturn.push({ kod: inp.dataset.kod, isim: inp.dataset.isim, qty: v });
+    });
+    if (invalid){ errEl.textContent = "Bir üründe teslim edilenden fazla adet girildi."; return; }
+    if (toReturn.length === 0){ errEl.textContent = "En az bir üründe adet gir."; return; }
+
+    srSubmitBtn.disabled = true; srSubmitBtn.textContent = "Kaydediliyor...";
+    try{
+      for (const r of toReturn){
+        let remaining = r.qty;
+        const shopOrders = state.orders
+          .filter(o => o.shopId === shopId && statusOf(o) === "Teslim Edildi")
+          .sort((a,b)=>{
+            const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+            const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+            return ta - tb;
+          });
+        for (const o of shopOrders){
+          if (remaining <= 0) break;
+          const items = o.items || [];
+          const idx = items.findIndex(it => it.kod === r.kod && it.qty > 0);
+          if (idx === -1) continue;
+          const take = Math.min(remaining, items[idx].qty);
+          const newItems = items.map((it,i)=> i===idx ? { ...it, qty: it.qty - take, returned: (it.returned||0) + take } : it);
+          await updateDoc(doc(db, "orders", o.id), { items: newItems });
+          o.items = newItems;
+          remaining -= take;
+        }
+        const productRef = doc(db, "products", r.kod);
+        const productSnap = await getDoc(productRef);
+        const cur = productSnap.exists() ? (productSnap.data().stok || 0) : 0;
+        await updateDoc(productRef, { stok: cur + r.qty });
+      }
+      toast("İade alındı, stoğa eklendi");
+      state.showShopReturnForm = false;
+      render();
+    }catch(e){
+      console.error(e);
+      errEl.textContent = "İade kaydedilemedi, tekrar dene.";
+      srSubmitBtn.disabled = false; srSubmitBtn.textContent = "İadeyi Kaydet";
+    }
+  });
 
   const submitBtn = document.getElementById("cf-submit");
   if (submitBtn) submitBtn.addEventListener("click", async ()=>{
