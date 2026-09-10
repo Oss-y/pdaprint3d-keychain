@@ -138,8 +138,8 @@
   }
   .stepper button:hover{ background:rgba(0,0,0,.05); }
   .qty-input{
-    width:44px; text-align:center; font-family:'JetBrains Mono'; font-size:13px;
-    background:none; border:none; color:var(--ink); outline:none;
+    width:52px; text-align:center; font-family:'JetBrains Mono'; font-size:16px;
+    background:none; border:none; color:var(--ink); outline:none; padding:8px 0;
     -moz-appearance:textfield;
   }
   .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button{
@@ -155,6 +155,15 @@
 
   .empty-msg{ padding:40px 20px; text-align:center; color:var(--ink-dim); font-size:14px; }
   .spinner{ text-align:center; padding:60px 0; color:var(--ink-dim); font-family:'JetBrains Mono'; font-size:12px; }
+
+  /* ===== iOS/mobile touch fixes ===== */
+  input, select, textarea{ font-size:16px !important; }
+  .search-toggle{ min-width:44px; min-height:44px; }
+  .stepper button{ min-width:38px; min-height:38px; }
+  .add-circle{ min-width:38px; min-height:38px; }
+  .welcome-cta, .cta-btn{ min-height:44px; }
+  body{ padding-bottom: env(safe-area-inset-bottom); }
+  .tray-bar{ padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
 
   /* ===== Floating tray ===== */
   .tray-bar{
