@@ -258,6 +258,7 @@ let state = {
   selectedShopId: null,
   showCollectForm: false,
   showShopReturnForm: false,
+  shopReturnPicks: [],
   showHistoricalForm: false,
   histBulkMode: false,
   loadingOrders: true,
@@ -1095,15 +1096,15 @@ function renderShopDetail(content, shopId){
     ` : state.showShopReturnForm ? `
       <div class="catalog-form" style="margin-top:16px;">
         <div class="section-title" style="font-size:15px; margin-bottom:10px;">Dükkandan İade Al</div>
-        ${rows.filter(r=>r.delivered>0).length===0 ? `<div class="empty-msg">Bu dükkana teslim edilmiş ürün yok.</div>` : rows.filter(r=>r.delivered>0).map(r=>`
-          <div class="collect-row">
-            <div class="stock-info">
-              <div class="stock-kod">${r.kod} · teslim ${r.delivered}</div>
-              <div class="stock-name">${r.isim}</div>
-            </div>
-            <input type="number" min="0" max="${r.delivered}" placeholder="Adet" data-kod="${r.kod}" data-isim="${r.isim}" data-max="${r.delivered}" class="sr-qty-input">
-          </div>
-        `).join("")}
+        <div class="form-row">
+          <select id="sr-product-select" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; color:var(--ink); font-size:13.5px;">
+            <option value="">Ürün seç...</option>
+            ${rows.filter(r=>r.delivered>0).map(r=>`<option value="${r.kod}" data-isim="${r.isim}" data-max="${r.delivered}">${r.isim} (teslim ${r.delivered})</option>`).join("")}
+          </select>
+          <input type="number" min="1" placeholder="Adet" id="sr-add-qty" style="max-width:80px;">
+          <button class="btn secondary" id="sr-add-btn" style="max-width:70px;">Ekle</button>
+        </div>
+        <div id="sr-picked-list" style="margin:6px 0;"></div>
         <div class="err" id="sr-err"></div>
         <button class="btn" id="sr-submit" style="width:100%; margin-top:10px;">İadeyi Kaydet</button>
         <button class="btn secondary" id="sr-cancel" style="width:100%; margin-top:8px;">Vazgeç</button>
@@ -1155,26 +1156,57 @@ function renderShopDetail(content, shopId){
   if (cancelBtn) cancelBtn.addEventListener("click", ()=>{ state.showCollectForm = false; render(); });
 
   const returnOpenBtn = document.getElementById("shop-return-btn");
-  if (returnOpenBtn) returnOpenBtn.addEventListener("click", ()=>{ state.showShopReturnForm = true; render(); });
+  if (returnOpenBtn) returnOpenBtn.addEventListener("click", ()=>{ state.showShopReturnForm = true; state.shopReturnPicks = []; render(); });
 
   const srCancelBtn = document.getElementById("sr-cancel");
-  if (srCancelBtn) srCancelBtn.addEventListener("click", ()=>{ state.showShopReturnForm = false; render(); });
+  if (srCancelBtn) srCancelBtn.addEventListener("click", ()=>{ state.showShopReturnForm = false; state.shopReturnPicks = []; render(); });
+
+  if (state.showShopReturnForm){
+    const pickedListEl = document.getElementById("sr-picked-list");
+    if (pickedListEl){
+      pickedListEl.innerHTML = state.shopReturnPicks.map((p,i)=>`
+        <div class="collect-row">
+          <div class="stock-info">
+            <div class="stock-kod">${p.kod}</div>
+            <div class="stock-name">${p.isim}</div>
+          </div>
+          <div style="font-family:'JetBrains Mono'; font-size:13px;">${p.qty} adet</div>
+          <button class="del-btn" data-idx="${i}">✕</button>
+        </div>
+      `).join("");
+      pickedListEl.querySelectorAll(".del-btn").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          state.shopReturnPicks.splice(parseInt(btn.dataset.idx,10), 1);
+          render();
+        });
+      });
+    }
+
+    const addBtn = document.getElementById("sr-add-btn");
+    if (addBtn) addBtn.addEventListener("click", ()=>{
+      const sel = document.getElementById("sr-product-select");
+      const errEl = document.getElementById("sr-err");
+      errEl.textContent = "";
+      const kod = sel.value;
+      if (!kod){ errEl.textContent = "Bir ürün seç."; return; }
+      const opt = sel.selectedOptions[0];
+      const isim = opt.dataset.isim;
+      const max = parseInt(opt.dataset.max, 10);
+      let qty = parseInt(document.getElementById("sr-add-qty").value, 10);
+      if (isNaN(qty) || qty <= 0){ errEl.textContent = "Geçerli bir adet gir."; return; }
+      const alreadyPicked = state.shopReturnPicks.filter(p=>p.kod===kod).reduce((a,p)=>a+p.qty,0);
+      if (qty + alreadyPicked > max){ errEl.textContent = "Teslim edilenden fazla adet giremezsin."; return; }
+      state.shopReturnPicks.push({ kod, isim, qty });
+      render();
+    });
+  }
 
   const srSubmitBtn = document.getElementById("sr-submit");
   if (srSubmitBtn) srSubmitBtn.addEventListener("click", async ()=>{
     const errEl = document.getElementById("sr-err");
     errEl.textContent = "";
-    const toReturn = [];
-    let invalid = false;
-    document.querySelectorAll(".sr-qty-input").forEach(inp=>{
-      let v = parseInt(inp.value, 10);
-      const max = parseInt(inp.dataset.max, 10);
-      if (isNaN(v) || v < 0) v = 0;
-      if (v > max) invalid = true;
-      if (v > 0) toReturn.push({ kod: inp.dataset.kod, isim: inp.dataset.isim, qty: v });
-    });
-    if (invalid){ errEl.textContent = "Bir üründe teslim edilenden fazla adet girildi."; return; }
-    if (toReturn.length === 0){ errEl.textContent = "En az bir üründe adet gir."; return; }
+    const toReturn = state.shopReturnPicks;
+    if (toReturn.length === 0){ errEl.textContent = "En az bir ürün seçip ekle."; return; }
 
     srSubmitBtn.disabled = true; srSubmitBtn.textContent = "Kaydediliyor...";
     try{
@@ -1205,6 +1237,7 @@ function renderShopDetail(content, shopId){
       }
       toast("İade alındı, stoğa eklendi");
       state.showShopReturnForm = false;
+      state.shopReturnPicks = [];
       render();
     }catch(e){
       console.error(e);
