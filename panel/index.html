@@ -920,19 +920,32 @@ function renderShops(content){
     ${state.shops.length===0 ? `<div class="empty-msg">Henüz dükkan yok. Çalışan uygulamasından bir teslimat girildiğinde otomatik eklenir.</div>` : state.shops.map(s=>{
       const rows = computeShopOnHand(s.id);
       const delivered = rows.reduce((a,r)=>a+r.delivered,0);
-      const soldAgg = state.shopCollections.filter(c=>c.shopId===s.id)
-        .reduce((a,c)=>a+(c.items||[]).reduce((x,it)=>x+(it.qty||0),0), 0);
+      const shopCols = state.shopCollections.filter(c=>c.shopId===s.id);
+      const soldAgg = shopCols.reduce((a,c)=>a+(c.items||[]).reduce((x,it)=>x+(it.qty||0),0), 0);
       const totalOnHand = Math.max(0, delivered - soldAgg);
       const hasStock = totalOnHand > 0;
-      return `
+
+      let lastDate = null;
+      shopCols.forEach(c=>{
+        const t = c.createdAt && c.createdAt.toMillis ? c.createdAt.toMillis() : null;
+        if (t && (!lastDate || t > lastDate)) lastDate = t;
+      });
+      const daysSince = lastDate ? Math.floor((Date.now() - lastDate) / 86400000) : Infinity;
+      const visitText = lastDate ? (daysSince===0 ? "bugün ziyaret edildi" : `${daysSince} gündür ziyaret edilmedi`) : "hiç tahsilat alınmadı";
+
+      return { s, totalOnHand, hasStock, daysSince, visitText };
+    }).sort((a,b)=>{
+      if (a.hasStock !== b.hasStock) return a.hasStock ? -1 : 1;
+      return (b.daysSince===Infinity?1e9:b.daysSince) - (a.daysSince===Infinity?1e9:a.daysSince);
+    }).map(({s, totalOnHand, hasStock, visitText})=>`
         <div class="shop-row ${hasStock?'has-stock':'empty-stock'}" data-shop-id="${s.id}">
           <div class="shop-icon">${hasStock ? '🏪' : '✓'}</div>
           <div class="shop-body">
             <div class="shop-name">${s.name}</div>
             <div class="shop-count ${hasStock?'has-stock-text':''}">${hasStock ? totalOnHand + ' adet duruyor' : 'stok yok'}</div>
+            <div class="shop-count" style="margin-top:1px;">${visitText}</div>
           </div>
-        </div>`;
-    }).join("")}
+        </div>`).join("")}
   `;
   content.querySelectorAll(".shop-row").forEach(el=>{
     el.addEventListener("click", ()=>{ state.selectedShopId = el.dataset.shopId; state.showCollectForm = false; render(); });
