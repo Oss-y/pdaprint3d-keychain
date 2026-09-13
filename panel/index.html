@@ -565,11 +565,22 @@ function renderStockHub(content){
 
 function renderProductStock(content){
   if (state.loadingProducts){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  const totalStock = state.products.reduce((a,p)=>a+(p.stok||0),0);
+  const sorted = state.products.slice().sort((a,b)=>{
+    const sa = a.stok||0, sb = b.stok||0;
+    if (sa>0 && sb===0) return -1;
+    if (sa===0 && sb>0) return 1;
+    return sa - sb;
+  });
   content.innerHTML = `
     <div class="section-title">Stok Durumu</div>
     ${state.products.length===0 ? `<div class="empty-msg">Katalogda ürün yok. Önce Katalog sekmesinden ürün ekle.</div>` : `
+    <div class="summary-row" style="border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:10px;">
+      <div class="summary-name" style="font-family:'Indie Flower'; font-size:20px;">Toplam Anahtarlık</div>
+      <div class="summary-count" style="width:auto; font-size:18px; color:var(--green);">${totalStock}</div>
+    </div>
     <div>
-      ${state.products.map(p=>`
+      ${sorted.map(p=>`
         <div class="stock-row">
           <div class="stock-info">
             <div class="stock-kod">${p.kod}</div>
