@@ -284,6 +284,10 @@ let state = {
   chartPeriod: "monthly",
   chartMonth: null,
   chartYear: null,
+  expenses: [],
+  loadingExpenses: true,
+  expensePicks: [],
+  newExpenseCategory: "Filament",
   shopReturnPicks: [],
   showHistoricalForm: false,
   histBulkMode: false,
@@ -293,7 +297,7 @@ let state = {
 };
 
 const root = document.getElementById("app");
-let unsubOrders = null, unsubProducts = null, unsubFilaments = null, unsubSettings = null, unsubShops = null, unsubCollections = null;
+let unsubOrders = null, unsubProducts = null, unsubFilaments = null, unsubSettings = null, unsubShops = null, unsubCollections = null, unsubExpenses = null;
 
 function toast(msg){
   const t = document.createElement("div");
@@ -330,7 +334,8 @@ onAuthStateChanged(auth, async (user)=>{
     if (unsubSettings) unsubSettings();
     if (unsubShops) unsubShops();
     if (unsubCollections) unsubCollections();
-    state.orders = []; state.products = []; state.filaments = []; state.shops = []; state.shopCollections = [];
+    if (unsubExpenses) unsubExpenses();
+    state.orders = []; state.products = []; state.filaments = []; state.shops = []; state.shopCollections = []; state.expenses = [];
   }
   render();
 });
@@ -382,6 +387,14 @@ function startListeners(){
     state.loadingCollections = false;
     render();
   }, err=>{ console.error(err); state.loadingCollections = false; render(); });
+
+  state.loadingExpenses = true;
+  const expensesQ = query(collection(db, "expenses"), orderBy("createdAt", "desc"));
+  unsubExpenses = onSnapshot(expensesQ, snap=>{
+    state.expenses = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    state.loadingExpenses = false;
+    render();
+  }, err=>{ console.error(err); state.loadingExpenses = false; render(); });
 }
 
 /* ================= RENDER: LOGIN ================= */
@@ -420,6 +433,8 @@ function renderShell(){
     {key:"orders", label:"Siparişler"},
     {key:"shops", label:"Dükkanlar"},
     {key:"sales", label:"Satış"},
+    {key:"expenses", label:"Gider"},
+    {key:"pnl", label:"Gelir-Gider"},
     {key:"stock", label:"Stok"},
     {key:"employees", label:"Çalışanlar"},
   ];
@@ -442,6 +457,8 @@ function renderShell(){
   else if (state.tab === "stock") renderStockHub(content);
   else if (state.tab === "shops") renderShops(content);
   else if (state.tab === "sales") renderSales(content);
+  else if (state.tab === "expenses") renderExpenses(content);
+  else if (state.tab === "pnl") renderPnl(content);
   else if (state.tab === "employees") renderEmployees(content);
 }
 
@@ -1483,6 +1500,177 @@ function renderShopDetail(content, shopId){
       submitBtn.disabled = false; submitBtn.textContent = "Kaydı Kaydet";
     }
   });
+}
+
+/* ================= TAB: EXPENSES (GİDER) ================= */
+const EXPENSE_CATEGORIES = ["Filament", "Bakım/Yedek Parça", "Ambalaj", "Kargo/Nakliye", "Elektrik", "Pazarlama", "Diğer"];
+
+function renderExpenses(content){
+  if (state.loadingExpenses || state.loadingFilaments){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  const cat = state.newExpenseCategory || "Filament";
+  content.innerHTML = `
+    <div class="section-title">Yeni Gider Ekle</div>
+    <div class="catalog-form">
+      <div class="form-row">
+        <select id="exp-category" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px; color:var(--ink); font-size:16px;">
+          ${EXPENSE_CATEGORIES.map(c=>`<option value="${c}" ${c===cat?'selected':''}>${c}</option>`).join("")}
+        </select>
+      </div>
+      <div class="form-row">
+        <input id="exp-desc" placeholder="Açıklama (ör. Migros'tan yapıştırıcı)">
+      </div>
+
+      ${cat === "Filament" ? `
+        <div class="form-row">
+          <select id="exp-fil-select" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px; color:var(--ink); font-size:16px;">
+            <option value="">Filament seç...</option>
+            ${state.filaments.map(f=>`<option value="${f.id}" data-name="${f.marka||''} ${f.tur||''} ${f.renk||''}">${f.marka||''} ${f.tur||''} — ${f.renk||''}</option>`).join("")}
+          </select>
+          <input type="number" min="1" placeholder="Makara" id="exp-fil-qty" style="max-width:90px;">
+          <button class="btn secondary" id="exp-fil-add" style="max-width:70px;">Ekle</button>
+        </div>
+        <div id="exp-fil-picks" style="margin:6px 0;"></div>
+        <div style="font-size:11.5px; color:var(--ink-dim); margin:-4px 0 8px;">Eklediğin her filament, kaydettiğinde Filament Stok'a otomatik işlenecek.</div>
+      ` : ""}
+
+      <div class="form-row">
+        <input id="exp-amount" type="number" min="0" step="1" placeholder="Tutar (TL)">
+      </div>
+      <div class="err" id="exp-err"></div>
+      <button class="btn" id="exp-submit" style="width:100%;">Gideri Kaydet</button>
+    </div>
+
+    <div class="section-title" style="margin-top:22px;">Gider Geçmişi</div>
+    ${state.expenses.length===0 ? `<div class="empty-msg">Henüz gider eklenmedi.</div>` : state.expenses.map(e=>{
+      const dt = e.createdAt && e.createdAt.toDate ? e.createdAt.toDate() : new Date();
+      return `
+        <div class="order-card">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px;">
+            <div>
+              <div class="order-emp" style="font-size:16px;">${e.category}</div>
+              <div class="order-date">${dt.toLocaleString('tr-TR')}</div>
+            </div>
+            <button class="del-btn undo-expense-btn" data-id="${e.id}">✕</button>
+          </div>
+          ${e.description ? `<div class="order-note" style="font-style:normal;">${e.description}</div>` : ""}
+          ${e.filamentItems && e.filamentItems.length ? `<div class="order-items" style="margin-top:6px;">${e.filamentItems.map(fi=>`<b>${fi.qty}×</b> ${fi.name}`).join("<br>")}</div>` : ""}
+          <div style="font-family:'JetBrains Mono'; font-size:13px; color:var(--red); margin-top:8px;">−${(e.amount||0).toLocaleString('tr-TR')} TL</div>
+        </div>`;
+    }).join("")}
+  `;
+
+  document.getElementById("exp-category").addEventListener("change", (e)=>{ state.newExpenseCategory = e.target.value; state.expensePicks = []; render(); });
+
+  const picksEl = document.getElementById("exp-fil-picks");
+  if (picksEl){
+    picksEl.innerHTML = state.expensePicks.map((p,i)=>`
+      <div class="collect-row">
+        <div class="stock-info">
+          <div class="stock-name">${p.name}</div>
+        </div>
+        <div style="font-family:'JetBrains Mono'; font-size:13px;">${p.qty} makara</div>
+        <button class="del-btn" data-idx="${i}">✕</button>
+      </div>
+    `).join("");
+    picksEl.querySelectorAll(".del-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=>{ state.expensePicks.splice(parseInt(btn.dataset.idx,10),1); render(); });
+    });
+  }
+
+  const filAddBtn = document.getElementById("exp-fil-add");
+  if (filAddBtn) filAddBtn.addEventListener("click", ()=>{
+    const sel = document.getElementById("exp-fil-select");
+    const errEl = document.getElementById("exp-err");
+    errEl.textContent = "";
+    if (!sel.value){ errEl.textContent = "Bir filament seç."; return; }
+    let qty = parseInt(document.getElementById("exp-fil-qty").value, 10);
+    if (isNaN(qty) || qty <= 0){ errEl.textContent = "Geçerli bir adet gir."; return; }
+    state.expensePicks.push({ filamentId: sel.value, name: sel.selectedOptions[0].dataset.name, qty });
+    render();
+  });
+
+  document.getElementById("exp-submit").addEventListener("click", async ()=>{
+    const errEl = document.getElementById("exp-err");
+    errEl.textContent = "";
+    const category = document.getElementById("exp-category").value;
+    const description = document.getElementById("exp-desc").value.trim();
+    let amount = parseFloat(document.getElementById("exp-amount").value);
+    if (isNaN(amount) || amount < 0){ errEl.textContent = "Geçerli bir tutar gir."; return; }
+    if (category === "Filament" && state.expensePicks.length === 0){ errEl.textContent = "En az bir filament seçip ekle."; return; }
+
+    const btn = document.getElementById("exp-submit");
+    btn.disabled = true; btn.textContent = "Kaydediliyor...";
+    try{
+      const filamentItems = category === "Filament" ? state.expensePicks.map(p=>({ name:p.name, qty:p.qty })) : [];
+      await addDoc(collection(db, "expenses"), {
+        category, description, amount, filamentItems, createdAt: serverTimestamp(),
+      });
+      if (category === "Filament"){
+        for (const p of state.expensePicks){
+          const filRef = doc(db, "filaments", p.filamentId);
+          const filSnap = await getDoc(filRef);
+          const cur = filSnap.exists() ? (filSnap.data().adet || 0) : 0;
+          await updateDoc(filRef, { adet: cur + p.qty });
+        }
+      }
+      toast("Gider kaydedildi");
+      state.expensePicks = [];
+      render();
+    }catch(e){
+      console.error(e);
+      errEl.textContent = "Kaydedilemedi, tekrar dene.";
+      btn.disabled = false; btn.textContent = "Gideri Kaydet";
+    }
+  });
+
+  content.querySelectorAll(".undo-expense-btn").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      if (!confirm("Bu gider silinsin mi?")) return;
+      try{ await deleteDoc(doc(db, "expenses", btn.dataset.id)); toast("Gider silindi"); }
+      catch(e){ toast("Silinemedi"); }
+    });
+  });
+}
+
+/* ================= TAB: PNL (GELİR-GİDER) ================= */
+function renderPnl(content){
+  if (state.loadingCollections || state.loadingExpenses){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  const totalIncome = state.shopCollections.reduce((a,c)=>a+(c.amount||0),0);
+  const totalExpense = state.expenses.reduce((a,e)=>a+(e.amount||0),0);
+  const net = totalIncome - totalExpense;
+
+  const catTotals = {};
+  state.expenses.forEach(e=>{
+    catTotals[e.category] = (catTotals[e.category]||0) + (e.amount||0);
+  });
+  const catRows = Object.entries(catTotals).map(([name,amount])=>({name,amount})).sort((a,b)=>b.amount-a.amount);
+  const maxCat = catRows.length ? catRows[0].amount : 1;
+
+  content.innerHTML = `
+    <div class="section-title">Gelir-Gider</div>
+    <div class="summary-row">
+      <div class="summary-name">Toplam Gelir (Tahsilat)</div>
+      <div class="summary-count" style="width:auto; color:var(--green);">${totalIncome.toLocaleString('tr-TR')} TL</div>
+    </div>
+    <div class="summary-row">
+      <div class="summary-name">Toplam Gider</div>
+      <div class="summary-count" style="width:auto; color:var(--red);">${totalExpense.toLocaleString('tr-TR')} TL</div>
+    </div>
+    <div class="summary-row" style="border-top:1px solid var(--line); margin-top:8px; padding-top:14px;">
+      <div class="summary-name" style="font-family:'Indie Flower'; font-size:22px;">Net Kâr</div>
+      <div class="summary-count" style="width:auto; font-size:18px; color:${net>=0?'var(--green)':'var(--red)'};">${net.toLocaleString('tr-TR')} TL</div>
+    </div>
+
+    <div class="section-title" style="margin-top:26px;">Kategori Bazında Gider</div>
+    ${catRows.length===0 ? `<div class="empty-msg">Henüz gider yok.</div>` : catRows.map((r,i)=>`
+      <div class="summary-row">
+        <div class="summary-rank">${i+1}</div>
+        <div class="summary-name">${r.name}</div>
+        <div class="summary-bar-wrap"><div class="summary-bar" style="width:${Math.max(6,(r.amount/maxCat)*100)}%; background:var(--red);"></div></div>
+        <div class="summary-count" style="width:auto;">${r.amount.toLocaleString('tr-TR')} TL</div>
+      </div>
+    `).join("")}
+  `;
 }
 
 function renderEmployees(content){
