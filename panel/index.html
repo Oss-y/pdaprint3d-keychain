@@ -618,7 +618,7 @@ function renderSales(content){
   const maxAmount = shopRows.length ? shopRows[0].amount : 1;
 
   const period = state.chartPeriod || "monthly";
-  const chartData = period === "weekly" ? computeWeeklyCollections(8)
+  const chartData = period === "weekly" ? computeLast7Days()
     : period === "yearly" ? computeMonthlyForYear(state.chartYear || new Date().getFullYear())
     : computeDailyForMonth(state.chartMonth || currentYearMonth());
   const chartSvg = buildCollectionsChart(chartData, period);
@@ -690,31 +690,38 @@ function currentYearMonth(){
 function monthOptions(){
   const now = new Date();
   const opts = [];
-  for (let i = 0; i < 24; i++){
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+  const startBoundary = new Date(2026, 7, 1); // Ağustos 2026
+  let d = new Date(now.getFullYear(), now.getMonth(), 1);
+  while (d.getTime() >= startBoundary.getTime()){
     opts.push({ value: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label: `${TR_MONTHS[d.getMonth()]} ${d.getFullYear()}` });
+    d = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  }
+  if (opts.length === 0){
+    opts.push({ value: `${startBoundary.getFullYear()}-08`, label: `${TR_MONTHS[7]} ${startBoundary.getFullYear()}` });
   }
   return opts;
 }
 function yearOptions(){
   const now = new Date();
   const opts = [];
-  for (let i = 0; i < 5; i++) opts.push(now.getFullYear() - i);
+  for (let y = now.getFullYear(); y >= 2026; y--) opts.push(y);
+  if (opts.length === 0) opts.push(2026);
   return opts;
 }
 
-function computeWeeklyCollections(weeksBack){
+function computeLast7Days(){
   const now = new Date();
   const buckets = [];
-  for (let i = weeksBack - 1; i >= 0; i--){
-    const end = new Date(now.getTime() - i * 7 * 86400000);
-    const start = new Date(end.getTime() - 7 * 86400000);
+  for (let i = 6; i >= 0; i--){
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const dayStart = day.getTime();
+    const dayEnd = dayStart + 86400000 - 1;
     let total = 0;
     state.shopCollections.forEach(c=>{
       const t = c.createdAt && c.createdAt.toMillis ? c.createdAt.toMillis() : null;
-      if (t !== null && t > start.getTime() && t <= end.getTime()) total += (c.amount || 0);
+      if (t !== null && t >= dayStart && t <= dayEnd) total += (c.amount || 0);
     });
-    buckets.push({ label: `${start.getDate()} ${TR_MONTHS_SHORT[start.getMonth()]}`, amount: total });
+    buckets.push({ label: `${day.getDate()} ${TR_MONTHS_SHORT[day.getMonth()]}`, amount: total });
   }
   return buckets;
 }
