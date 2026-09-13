@@ -618,6 +618,7 @@ function renderSales(content){
     soldQty += (c.items||[]).reduce((a,it)=>a+(it.qty||0), 0);
     totalCollected += (c.amount || 0);
   });
+  const outstandingQty = Math.max(0, deliveredQty - soldQty);
 
   const shopTotals = {};
   state.shopCollections.forEach(c=>{
@@ -642,8 +643,8 @@ function renderSales(content){
       <div class="summary-count" style="width:auto;">${pendingQty}</div>
     </div>
     <div class="summary-row">
-      <div class="summary-name">Dükkanlarda duran (teslim edilen) adet</div>
-      <div class="summary-count" style="width:auto;">${deliveredQty}</div>
+      <div class="summary-name">Dükkanlarda duran (tahsil edilmemiş) adet</div>
+      <div class="summary-count" style="width:auto;">${outstandingQty}</div>
     </div>
     <div class="summary-row">
       <div class="summary-name">Satılan adet (tahsilat yapılan)</div>
