@@ -87,6 +87,7 @@
     border-radius:14px; padding:16px; margin-bottom:12px; transition:border-color .15s ease;
   }
   .order-card.st-bekleyen{ border-left-color:var(--orange); background:linear-gradient(90deg, rgba(255,90,54,.07), var(--surface) 60px); }
+  .order-card.st-paket{ border-left-color:#5a8fc7; background:linear-gradient(90deg, rgba(90,143,199,.09), var(--surface) 60px); }
   .order-card.st-teslim{ border-left-color:var(--green); background:linear-gradient(90deg, rgba(234,229,214,.10), var(--surface) 60px); }
   .order-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px; }
   .order-emp{ font-family:'Indie Flower'; font-size:19px; }
@@ -462,7 +463,7 @@ function renderShell(){
   else if (state.tab === "employees") renderEmployees(content);
 }
 
-const STATUS_STAGES = ["Bekleyen", "Teslim Edildi"];
+const STATUS_STAGES = ["Bekleyen", "Paketlendi", "Teslim Edildi"];
 function statusOf(o){
   const s = o.status;
   if (!s || s === "Yeni") return "Bekleyen";
@@ -479,7 +480,7 @@ function renderOrders(content){
   if (state.loadingOrders){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
   const filter = state.orderFilter || "Bekleyen";
   const filtered = state.orders.filter(o => statusOf(o) === filter);
-  const pillClass = { "Bekleyen":"yeni", "Teslim Edildi":"tamamlandi" };
+  const pillClass = { "Bekleyen":"yeni", "Paketlendi":"teslim", "Teslim Edildi":"tamamlandi" };
   content.innerHTML = `
     <div class="section-title">Siparişler</div>
     <div style="display:flex; gap:8px; margin:-8px 0 16px;">
@@ -489,7 +490,7 @@ function renderOrders(content){
       const dt = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate() : new Date();
       const st = statusOf(o);
       return `
-        <div class="order-card ${st==='Bekleyen'?'st-bekleyen':'st-teslim'}">
+        <div class="order-card ${st==='Bekleyen'?'st-bekleyen':st==='Paketlendi'?'st-paket':'st-teslim'}">
           <div class="order-top">
             <div>
               <div class="order-emp">${o.employee || "Bilinmiyor"}</div>
