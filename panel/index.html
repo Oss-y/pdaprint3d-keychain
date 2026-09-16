@@ -1504,7 +1504,7 @@ function renderShopDetail(content, shopId){
 }
 
 /* ================= TAB: EXPENSES (GİDER) ================= */
-const EXPENSE_CATEGORIES = ["Filament", "Anahtarlık Aparatı", "Bakım/Yedek Parça", "Ambalaj", "Kargo/Nakliye", "Ulaşım", "Elektrik", "Pazarlama", "Diğer"];
+const EXPENSE_CATEGORIES = ["Filament", "Üretim Masrafları", "Bakım/Yedek Parça", "Ambalaj", "Kargo/Nakliye", "Ulaşım", "Elektrik", "Pazarlama", "Diğer"];
 
 function renderExpenses(content){
   if (state.loadingExpenses || state.loadingFilaments){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
