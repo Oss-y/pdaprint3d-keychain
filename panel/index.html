@@ -272,6 +272,7 @@ let state = {
   products: [],
   filaments: [],
   filamentFilter: "Tümü",
+  filamentBrandFilter: "Tümü",
   stockSubTab: "Ürün",
   unitPrice: 50,
   loadingSettings: true,
@@ -1041,15 +1042,20 @@ const SEED_FILAMENTS = [
 function renderFilaments(content){
   if (state.loadingFilaments){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
 
-  const types = [...new Set(state.filaments.map(f=>f.tur).filter(Boolean))].sort();
   const dupeKeyCounts = {};
   state.filaments.forEach(f=>{
     const key = [f.marka||"", f.tur||"", f.renk||"", f.cap||""].join("|").toLowerCase();
     dupeKeyCounts[key] = (dupeKeyCounts[key]||0) + 1;
   });
   const hasDuplicates = Object.values(dupeKeyCounts).some(c=>c>1);
+
+  const brands = [...new Set(state.filaments.map(f=>(f.marka||"").trim()).filter(Boolean))].sort();
+  const activeBrand = state.filamentBrandFilter || "Tümü";
+  const byBrand = activeBrand === "Tümü" ? state.filaments : state.filaments.filter(f=>(f.marka||"").trim().toLowerCase()===activeBrand.toLowerCase());
+
+  const types = [...new Set(byBrand.map(f=>f.tur).filter(Boolean))].sort();
   const activeType = state.filamentFilter || "Tümü";
-  const shown = activeType === "Tümü" ? state.filaments : state.filaments.filter(f=>f.tur===activeType);
+  const shown = activeType === "Tümü" ? byBrand : byBrand.filter(f=>f.tur===activeType);
 
   const grouped = {};
   shown.forEach(f=>{
@@ -1074,12 +1080,17 @@ function renderFilaments(content){
       </div>
       <button class="btn secondary" id="add-fil-btn" style="width:100%;">+ Filament Ekle</button>
     </div>
+    ${brands.length > 0 ? `
+    <div class="tabbar" style="padding:0 0 8px;">
+      <button class="tab-btn ${activeBrand==='Tümü'?'active':''}" data-brand="Tümü">Tümü</button>
+      ${brands.map(b=>`<button class="tab-btn ${activeBrand===b?'active':''}" data-brand="${b}">${b}</button>`).join("")}
+    </div>` : ""}
     ${types.length > 0 ? `
     <div class="tabbar" style="padding:0 0 14px;">
       <button class="tab-btn ${activeType==='Tümü'?'active':''}" data-type="Tümü">Tümü</button>
       ${types.map(t=>`<button class="tab-btn ${activeType===t?'active':''}" data-type="${t}">${t}</button>`).join("")}
     </div>` : ""}
-    ${shown.length===0 ? `<div class="empty-msg">Bu türde filament yok.</div>` : Object.keys(grouped).sort().map(tur=>`
+    ${shown.length===0 ? `<div class="empty-msg">Bu seçimde filament yok.</div>` : Object.keys(grouped).sort().map(tur=>`
       <div style="font-family:'JetBrains Mono'; font-size:11px; color:var(--ink-dim); margin:14px 0 4px;">${tur.toUpperCase()}</div>
       ${grouped[tur].map(f=>`
         <div class="stock-row">
@@ -1144,6 +1155,9 @@ function renderFilaments(content){
     }
   });
 
+  content.querySelectorAll(".tab-btn[data-brand]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ state.filamentBrandFilter = btn.dataset.brand; state.filamentFilter = "Tümü"; renderFilaments(content); });
+  });
   content.querySelectorAll(".tab-btn[data-type]").forEach(btn=>{
     btn.addEventListener("click", ()=>{ state.filamentFilter = btn.dataset.type; renderFilaments(content); });
   });
