@@ -281,6 +281,7 @@ let state = {
   loadingCollections: true,
   selectedShopId: null,
   editingOrderId: null,
+  editingItems: [],
   showCollectForm: false,
   showShopReturnForm: false,
   chartPeriod: "monthly",
@@ -478,7 +479,7 @@ function nextStatus(current){
 
 /* ================= TAB: ORDERS ================= */
 function renderOrders(content){
-  if (state.loadingOrders || state.loadingShops){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  if (state.loadingOrders || state.loadingShops || state.loadingProducts){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
   const filter = state.orderFilter || "Bekleyen";
   const filtered = state.orders.filter(o => statusOf(o) === filter);
   const pillClass = { "Bekleyen":"yeni", "Paketlendi":"teslim", "Teslim Edildi":"tamamlandi" };
@@ -492,29 +493,49 @@ function renderOrders(content){
       const st = statusOf(o);
       const totalQty = (o.items||[]).reduce((a,it)=>a+(it.qty||0),0);
       const editing = state.editingOrderId === o.id;
+      const editItems = editing ? state.editingItems : null;
       return `
         <div class="order-card ${st==='Bekleyen'?'st-bekleyen':st==='Paketlendi'?'st-paket':'st-teslim'}">
           <div class="order-top">
             <div>
               <div class="order-emp">${o.employee || "Bilinmiyor"}</div>
               <div class="order-date">${dt.toLocaleString('tr-TR')}</div>
-              <div style="font-family:'Indie Flower'; font-size:22px; color:var(--orange); margin-top:2px;">${totalQty} adet</div>
             </div>
             <button class="status-pill ${pillClass[st]}" data-id="${o.id}" data-status="${st}">${st}</button>
           </div>
           ${editing ? `
-            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
               <select class="edit-shop-select" data-id="${o.id}" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; color:var(--ink); font-size:13px;">
                 ${state.shops.map(s=>`<option value="${s.id}" ${s.id===o.shopId?'selected':''}>${s.name}</option>`).join("")}
               </select>
-              <button class="btn secondary save-shop-btn" data-id="${o.id}" style="max-width:70px; padding:8px; font-size:12px;">Kaydet</button>
               <button class="del-btn cancel-edit-btn" data-id="${o.id}">✕</button>
             </div>
+            <div style="font-size:11px; color:var(--ink-dim); margin-bottom:4px;">Anahtarlıklar</div>
+            ${editItems.map((it,i)=>`
+              <div class="collect-row">
+                <div class="stock-info">
+                  <div class="stock-kod">${it.kod}</div>
+                  <div class="stock-name">${it.isim}</div>
+                </div>
+                <input type="number" min="0" value="${it.qty}" class="edit-item-qty" data-idx="${i}" style="width:56px;">
+                <button class="del-btn edit-item-remove" data-idx="${i}">✕</button>
+              </div>
+            `).join("")}
+            <div class="form-row" style="margin-top:8px;">
+              <select id="edit-add-product" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; color:var(--ink); font-size:14px;">
+                <option value="">Ürün ekle...</option>
+                ${state.products.map(p=>`<option value="${p.kod}" data-isim="${p.isim}">${p.isim}</option>`).join("")}
+              </select>
+              <input type="number" min="1" placeholder="Adet" id="edit-add-qty" style="max-width:70px;">
+              <button class="btn secondary" id="edit-add-btn" style="max-width:60px;">Ekle</button>
+            </div>
+            <button class="btn save-shop-btn" data-id="${o.id}" style="width:100%; margin-top:10px;">Kaydet</button>
           ` : `
-          <div class="order-note" style="font-style:normal; margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+          <div class="order-note" style="font-style:normal; margin-bottom:2px; display:flex; align-items:center; gap:8px;">
             ${o.shopName ? `<span>Dükkan: ${o.shopName}</span>` : (o.customerName || o.customerPhone || o.customerEmail) ? `<span>Müşteri: ${o.customerName || "—"}${o.customerPhone ? " · " + o.customerPhone : ""}${o.customerEmail ? " · " + o.customerEmail : ""}</span>` : "<span></span>"}
             ${o.shopId ? `<button class="edit-shop-btn" data-id="${o.id}" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--ink-dim); background:none; border:1px solid var(--line); border-radius:10px; padding:3px 8px; cursor:pointer;">Düzenle</button>` : ""}
-          </div>`}
+          </div>
+          <div style="font-family:'Indie Flower'; font-size:22px; color:#ffffff; margin-bottom:8px;">${totalQty} adet</div>
           <div class="order-items">
             ${(o.items||[]).map(it=>`
               <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
@@ -525,6 +546,7 @@ function renderOrders(content){
           </div>
           ${o.note ? `<div class="order-note">"${o.note}"</div>` : ""}
           <button class="btn secondary cancel-order-btn" data-id="${o.id}" style="width:100%; margin-top:10px; padding:8px; font-size:11.5px; color:var(--red); border-color:var(--red);">Siparişi İptal Et</button>
+          `}
         </div>`;
     }).join("")}
   `;
@@ -560,22 +582,67 @@ function renderOrders(content){
     });
   });
   content.querySelectorAll(".edit-shop-btn").forEach(btn=>{
-    btn.addEventListener("click", ()=>{ state.editingOrderId = btn.dataset.id; render(); });
+    btn.addEventListener("click", ()=>{
+      const order = state.orders.find(o=>o.id===btn.dataset.id);
+      state.editingOrderId = btn.dataset.id;
+      state.editingItems = (order.items||[]).map(it=>({ ...it }));
+      render();
+    });
   });
   content.querySelectorAll(".cancel-edit-btn").forEach(btn=>{
-    btn.addEventListener("click", ()=>{ state.editingOrderId = null; render(); });
+    btn.addEventListener("click", ()=>{ state.editingOrderId = null; state.editingItems = []; render(); });
+  });
+  content.querySelectorAll(".edit-item-qty").forEach(inp=>{
+    inp.addEventListener("change", ()=>{
+      let v = parseInt(inp.value,10); if (isNaN(v)||v<0) v = 0;
+      state.editingItems[parseInt(inp.dataset.idx,10)].qty = v;
+      render();
+    });
+  });
+  content.querySelectorAll(".edit-item-remove").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      state.editingItems.splice(parseInt(btn.dataset.idx,10),1);
+      render();
+    });
+  });
+  const editAddBtn = document.getElementById("edit-add-btn");
+  if (editAddBtn) editAddBtn.addEventListener("click", ()=>{
+    const sel = document.getElementById("edit-add-product");
+    const qtyInp = document.getElementById("edit-add-qty");
+    if (!sel.value) return;
+    let qty = parseInt(qtyInp.value,10);
+    if (isNaN(qty) || qty<=0) qty = 1;
+    const existing = state.editingItems.find(it=>it.kod===sel.value);
+    if (existing) existing.qty += qty;
+    else state.editingItems.push({ kod: sel.value, isim: sel.selectedOptions[0].dataset.isim, qty });
+    render();
   });
   content.querySelectorAll(".save-shop-btn").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
       const orderId = btn.dataset.id;
+      const order = state.orders.find(o=>o.id===orderId);
       const sel = content.querySelector(`.edit-shop-select[data-id="${orderId}"]`);
-      const newShopId = sel.value;
-      const newShop = state.shops.find(s=>s.id===newShopId);
+      const newShop = state.shops.find(s=>s.id===sel.value);
       if (!newShop) return;
+      const newItems = state.editingItems.filter(it=>it.qty>0);
       try{
-        await updateDoc(doc(db, "orders", orderId), { shopId: newShop.id, shopName: newShop.name });
-        toast("Dükkan güncellendi");
+        const oldMap = {};
+        (order.items||[]).forEach(it=>{ oldMap[it.kod] = it.qty; });
+        const newMap = {};
+        newItems.forEach(it=>{ newMap[it.kod] = it.qty; });
+        const allKods = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
+        for (const kod of allKods){
+          const delta = (newMap[kod]||0) - (oldMap[kod]||0);
+          if (delta === 0) continue;
+          const productRef = doc(db, "products", kod);
+          const productSnap = await getDoc(productRef);
+          const cur = productSnap.exists() ? (productSnap.data().stok || 0) : 0;
+          await updateDoc(productRef, { stok: Math.max(0, cur - delta) });
+        }
+        await updateDoc(doc(db, "orders", orderId), { shopId: newShop.id, shopName: newShop.name, items: newItems });
+        toast("Sipariş güncellendi");
         state.editingOrderId = null;
+        state.editingItems = [];
       }catch(e){
         console.error(e);
         toast("Güncellenemedi, tekrar dene.");
