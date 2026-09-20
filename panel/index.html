@@ -539,7 +539,8 @@ function renderOrders(content){
             ${o.shopName ? `<span>Dükkan: ${o.shopName}</span>` : (o.customerName || o.customerPhone || o.customerEmail) ? `<span>Müşteri: ${o.customerName || "—"}${o.customerPhone ? " · " + o.customerPhone : ""}${o.customerEmail ? " · " + o.customerEmail : ""}</span>` : "<span></span>"}
             ${o.shopId ? `<button class="edit-shop-btn" data-id="${o.id}" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--ink-dim); background:none; border:1px solid var(--line); border-radius:10px; padding:3px 8px; cursor:pointer;">Düzenle</button>` : ""}
           </div>
-          <div style="font-family:'Indie Flower'; font-size:22px; color:#ffffff; margin-bottom:8px;">${totalQty} adet</div>
+          <div style="font-family:'Indie Flower'; font-size:22px; color:#ffffff; margin-bottom:2px;">${totalQty} adet</div>
+          ${o.note ? `<div class="order-note" style="margin-bottom:8px;">"${o.note}"</div>` : ""}
           <div class="order-items">
             ${(o.items||[]).map(it=>`
               <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
@@ -548,7 +549,6 @@ function renderOrders(content){
                   style="font-family:'JetBrains Mono'; font-size:10px; color:var(--ink-dim); background:none; border:1px solid var(--line); border-radius:10px; padding:3px 8px; cursor:pointer; flex-shrink:0;">İade Al</button>
               </div>`).join("")}
           </div>
-          ${o.note ? `<div class="order-note">"${o.note}"</div>` : ""}
           <button class="btn secondary cancel-order-btn" data-id="${o.id}" style="width:100%; margin-top:10px; padding:8px; font-size:11.5px; color:var(--red); border-color:var(--red);">Siparişi İptal Et</button>
           `}
         </div>`;
