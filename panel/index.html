@@ -506,10 +506,13 @@ function renderOrders(content){
           </div>
           ${editing ? `
             <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
-              <select class="edit-shop-select" data-id="${o.id}" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; color:var(--ink); font-size:13px;">
+              <select class="edit-shop-select" data-id="${o.id}" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; color:var(--ink); font-size:16px;">
                 ${state.shops.map(s=>`<option value="${s.id}" ${s.id===o.shopId?'selected':''}>${s.name}</option>`).join("")}
               </select>
               <button class="del-btn cancel-edit-btn" data-id="${o.id}">✕</button>
+            </div>
+            <div class="form-row" style="margin-bottom:10px;">
+              <textarea id="edit-note" placeholder="Not" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; color:var(--ink); font-size:16px; min-height:60px; resize:vertical;">${o.note||""}</textarea>
             </div>
             <div style="font-size:11px; color:var(--ink-dim); margin-bottom:4px;">Anahtarlıklar</div>
             ${editItems.map((it,i)=>`
@@ -529,9 +532,6 @@ function renderOrders(content){
               </select>
               <input type="number" min="1" placeholder="Adet" id="edit-add-qty" style="max-width:70px;">
               <button class="btn secondary" id="edit-add-btn" style="max-width:60px;">Ekle</button>
-            </div>
-            <div class="form-row" style="margin-top:8px;">
-              <textarea id="edit-note" placeholder="Not" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; color:var(--ink); font-size:14px; min-height:60px; resize:vertical;">${o.note||""}</textarea>
             </div>
             <button class="btn save-shop-btn" data-id="${o.id}" style="width:100%; margin-top:10px;">Kaydet</button>
           ` : `
