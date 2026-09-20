@@ -530,6 +530,9 @@ function renderOrders(content){
               <input type="number" min="1" placeholder="Adet" id="edit-add-qty" style="max-width:70px;">
               <button class="btn secondary" id="edit-add-btn" style="max-width:60px;">Ekle</button>
             </div>
+            <div class="form-row" style="margin-top:8px;">
+              <textarea id="edit-note" placeholder="Not" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; color:var(--ink); font-size:14px; min-height:60px; resize:vertical;">${o.note||""}</textarea>
+            </div>
             <button class="btn save-shop-btn" data-id="${o.id}" style="width:100%; margin-top:10px;">Kaydet</button>
           ` : `
           <div class="order-note" style="font-style:normal; margin-bottom:2px; display:flex; align-items:center; gap:8px;">
@@ -640,7 +643,9 @@ function renderOrders(content){
           const cur = productSnap.exists() ? (productSnap.data().stok || 0) : 0;
           await updateDoc(productRef, { stok: Math.max(0, cur - delta) });
         }
-        await updateDoc(doc(db, "orders", orderId), { shopId: newShop.id, shopName: newShop.name, items: newItems });
+        const noteEl = document.getElementById("edit-note");
+        const newNote = noteEl ? noteEl.value.trim() : (order.note || "");
+        await updateDoc(doc(db, "orders", orderId), { shopId: newShop.id, shopName: newShop.name, items: newItems, note: newNote });
         toast("Sipariş güncellendi");
         state.editingOrderId = null;
         state.editingItems = [];
