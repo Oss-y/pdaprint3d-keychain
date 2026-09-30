@@ -210,9 +210,23 @@
     width:64px; text-align:center; background:var(--bg); border:1px solid var(--line);
     border-radius:8px; padding:10px 4px; color:var(--ink); font-family:'JetBrains Mono'; font-size:16px;
   }
+
+  /* ===== Print report ===== */
+  #print-report{ display:none; }
+  #print-report .pr-title{ font-family:'Indie Flower'; font-size:26px; color:#2b2a24; }
+  #print-report .pr-sub{ font-family:'JetBrains Mono'; font-size:11px; color:#7a7461; margin-bottom:18px; }
+  #print-report .pr-section{ font-family:'Indie Flower'; font-size:18px; color:#2b2a24; margin:18px 0 8px; border-bottom:1px solid #cfc7b2; padding-bottom:4px; }
+  #print-report .pr-row{ display:flex; justify-content:space-between; font-family:'JetBrains Mono'; font-size:12px; color:#2b2a24; padding:5px 0; border-bottom:1px dashed #e5e0d3; }
+  #print-report .pr-row.total{ font-weight:700; border-bottom:none; border-top:1px solid #2b2a24; padding-top:8px; margin-top:4px; }
+  @media print{
+    body *{ visibility:hidden; }
+    #print-report, #print-report *{ visibility:visible; }
+    #print-report{ display:block; position:absolute; top:0; left:0; width:100%; padding:20px; background:#fff; color:#2b2a24; }
+  }
 </style>
 </head>
 <body>
+<div id="print-report"></div>
 <div id="app"><div class="spinner">Yükleniyor...</div></div>
 
 <script type="module">
@@ -288,6 +302,7 @@ let state = {
   chartPeriod: "monthly",
   chartMonth: null,
   chartYear: null,
+  reportMonth: null,
   expenses: [],
   loadingExpenses: true,
   expensePicks: [],
@@ -1768,6 +1783,14 @@ function renderPnl(content){
 
   content.innerHTML = `
     <div class="section-title">Gelir-Gider</div>
+
+    <div class="form-row" style="margin-bottom:14px;">
+      <select id="report-month-select" style="flex:1; background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:12px; color:var(--ink); font-size:16px;">
+        ${monthOptions().map(o=>`<option value="${o.value}" ${o.value===(state.reportMonth||currentYearMonth())?'selected':''}>${o.label}</option>`).join("")}
+      </select>
+      <button class="btn secondary" id="report-btn" style="flex-shrink:0;">Rapor Oluştur</button>
+    </div>
+
     <div class="summary-row">
       <div class="summary-name">Toplam Gelir (Tahsilat)</div>
       <div class="summary-count" style="width:auto; color:var(--green);">${totalIncome.toLocaleString('tr-TR')} TL</div>
@@ -1791,6 +1814,27 @@ function renderPnl(content){
       </div>
     `).join("")}
   `;
+
+  const monthSel = document.getElementById("report-month-select");
+  if (monthSel) monthSel.addEventListener("change", ()=>{ state.reportMonth = monthSel.value; });
+
+  const reportBtn = document.getElementById("report-btn");
+  if (reportBtn) reportBtn.addEventListener("click", ()=>{
+    const ym = (document.getElementById("report-month-select")||{}).value || currentYearMonth();
+    buildMonthlyReport(ym);
+  });
+}
+
+function buildMonthlyReport(yearMonth){
+  const [y, m] = yearMonth.split('-').map(Number);
+  const monthLabel = `${TR_MONTHS[m-1]} ${y}`;
+  const el = document.getElementById("print-report");
+  el.innerHTML = `
+    <div class="pr-title">PDAprint 3d — Aylık Rapor</div>
+    <div class="pr-sub">${monthLabel}</div>
+    <div class="pr-row"><span>Rapor içeriği bir sonraki adımda eklenecek.</span><span></span></div>
+  `;
+  window.print();
 }
 
 function renderEmployees(content){
