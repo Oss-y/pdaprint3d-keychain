@@ -1828,11 +1828,30 @@ function renderPnl(content){
 function buildMonthlyReport(yearMonth){
   const [y, m] = yearMonth.split('-').map(Number);
   const monthLabel = `${TR_MONTHS[m-1]} ${y}`;
+  const start = new Date(y, m-1, 1).getTime();
+  const end = new Date(y, m, 1).getTime();
+
+  const monthCollections = state.shopCollections.filter(c=>{
+    const t = c.createdAt && c.createdAt.toMillis ? c.createdAt.toMillis() : null;
+    return t !== null && t >= start && t < end;
+  });
+  const monthExpenses = state.expenses.filter(e=>{
+    const t = e.createdAt && e.createdAt.toMillis ? e.createdAt.toMillis() : null;
+    return t !== null && t >= start && t < end;
+  });
+  const totalIncome = monthCollections.reduce((a,c)=>a+(c.amount||0),0);
+  const totalExpense = monthExpenses.reduce((a,e)=>a+(e.amount||0),0);
+  const net = totalIncome - totalExpense;
+
   const el = document.getElementById("print-report");
   el.innerHTML = `
     <div class="pr-title">PDAprint 3d — Aylık Rapor</div>
     <div class="pr-sub">${monthLabel}</div>
-    <div class="pr-row"><span>Rapor içeriği bir sonraki adımda eklenecek.</span><span></span></div>
+
+    <div class="pr-section">Özet</div>
+    <div class="pr-row"><span>Toplam Gelir (Tahsilat)</span><span>${totalIncome.toLocaleString('tr-TR')} TL</span></div>
+    <div class="pr-row"><span>Toplam Gider</span><span>${totalExpense.toLocaleString('tr-TR')} TL</span></div>
+    <div class="pr-row total"><span>Net Kâr</span><span>${net.toLocaleString('tr-TR')} TL</span></div>
   `;
   window.print();
 }
