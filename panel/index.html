@@ -1939,6 +1939,13 @@ function buildMonthlyReport(yearMonth){
   const totalExpense = monthExpenses.reduce((a,e)=>a+(e.amount||0),0);
   const net = totalIncome - totalExpense;
 
+  const catTotals = {};
+  monthExpenses.forEach(e=>{ catTotals[e.category] = (catTotals[e.category]||0) + (e.amount||0); });
+  const catRowsHtml = Object.keys(catTotals).length === 0
+    ? `<div class="pr-row"><span>Bu ay gider kaydı yok.</span><span></span></div>`
+    : Object.entries(catTotals).sort((a,b)=>b[1]-a[1])
+        .map(([name,amt])=>`<div class="pr-row"><span>${name}</span><span>${amt.toLocaleString('tr-TR')} TL</span></div>`).join("");
+
   const el = document.getElementById("print-report");
   el.innerHTML = `
     <div class="pr-title">PDAprint 3d — Aylık Rapor</div>
@@ -1948,6 +1955,9 @@ function buildMonthlyReport(yearMonth){
     <div class="pr-row"><span>Toplam Gelir (Tahsilat)</span><span>${totalIncome.toLocaleString('tr-TR')} TL</span></div>
     <div class="pr-row"><span>Toplam Gider</span><span>${totalExpense.toLocaleString('tr-TR')} TL</span></div>
     <div class="pr-row total"><span>Net Kâr</span><span>${net.toLocaleString('tr-TR')} TL</span></div>
+
+    <div class="pr-section">Kategori Bazında Gider</div>
+    ${catRowsHtml}
   `;
   window.print();
 }
