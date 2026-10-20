@@ -1946,6 +1946,37 @@ function buildMonthlyReport(yearMonth){
     : Object.entries(catTotals).sort((a,b)=>b[1]-a[1])
         .map(([name,amt])=>`<div class="pr-row"><span>${name}</span><span>${amt.toLocaleString('tr-TR')} TL</span></div>`).join("");
 
+  const fmtDate = (x)=>{
+    const d = x.createdAt && x.createdAt.toDate ? x.createdAt.toDate() : null;
+    return d ? d.toLocaleDateString('tr-TR') : "-";
+  };
+  const shopTotals = {};
+  monthCollections.forEach(c=>{
+    const key = c.shopName || "Bilinmiyor";
+    shopTotals[key] = (shopTotals[key]||0) + (c.amount||0);
+  });
+  const shopRowsHtml = Object.keys(shopTotals).length === 0
+    ? `<div class="pr-row"><span>Bu ay tahsilat yok.</span><span></span></div>`
+    : Object.entries(shopTotals).sort((a,b)=>b[1]-a[1])
+        .map(([name,amt])=>`<div class="pr-row"><span>${name}</span><span>${amt.toLocaleString('tr-TR')} TL</span></div>`).join("");
+  const collectionListHtml = monthCollections.length === 0
+    ? `<div class="pr-row"><span>Kayıt yok.</span><span></span></div>`
+    : monthCollections.slice().sort((a,b)=>{
+        const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+        const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+        return ta - tb;
+      }).map(c=>{
+        const qty = (c.items||[]).reduce((a,it)=>a+(it.qty||0),0);
+        return `<div class="pr-row"><span>${fmtDate(c)} — ${c.shopName||"-"} (${qty} adet)</span><span>${(c.amount||0).toLocaleString('tr-TR')} TL</span></div>`;
+      }).join("");
+  const expenseListHtml = monthExpenses.length === 0
+    ? `<div class="pr-row"><span>Kayıt yok.</span><span></span></div>`
+    : monthExpenses.slice().sort((a,b)=>{
+        const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+        const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+        return ta - tb;
+      }).map(e=>`<div class="pr-row"><span>${fmtDate(e)} — ${e.category}${e.description ? " · " + e.description : ""}</span><span>${(e.amount||0).toLocaleString('tr-TR')} TL</span></div>`).join("");
+
   const el = document.getElementById("print-report");
   el.innerHTML = `
     <div class="pr-title">PDAprint 3d — Aylık Rapor</div>
@@ -1958,6 +1989,15 @@ function buildMonthlyReport(yearMonth){
 
     <div class="pr-section">Kategori Bazında Gider</div>
     ${catRowsHtml}
+
+    <div class="pr-section">Dükkan Bazında Tahsilat</div>
+    ${shopRowsHtml}
+
+    <div class="pr-section">Tahsilat Detayı</div>
+    ${collectionListHtml}
+
+    <div class="pr-section">Gider Detayı</div>
+    ${expenseListHtml}
   `;
   window.print();
 }
