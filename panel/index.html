@@ -299,8 +299,6 @@ let state = {
   editingItems: [],
   showCollectForm: false,
   showShopReturnForm: false,
-  showWriteOffForm: false,
-  writeOffPicks: [],
   chartPeriod: "monthly",
   chartMonth: null,
   chartYear: null,
@@ -1479,29 +1477,11 @@ function renderShopDetail(content, shopId){
         <button class="btn" id="sr-submit" style="width:100%; margin-top:10px;">İadeyi Kaydet</button>
         <button class="btn secondary" id="sr-cancel" style="width:100%; margin-top:8px;">Vazgeç</button>
       </div>
-    ` : state.showWriteOffForm ? `
-      <div class="catalog-form" style="margin-top:16px;">
-        <div class="section-title" style="font-size:15px; margin-bottom:6px;">Dükkandan Düş (Kayıp/Hasar)</div>
-        <div style="font-size:11.5px; color:var(--ink-dim); margin-bottom:10px;">Bu ürünler stoğa geri eklenmez, sadece dükkandaki kayıttan düşülür.</div>
-        <div class="form-row">
-          <select id="wo-product-select" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; color:var(--ink); font-size:13.5px;">
-            <option value="">Ürün seç...</option>
-            ${state.products.map(p=>`<option value="${p.kod}" data-isim="${p.isim}">${p.isim}</option>`).join("")}
-          </select>
-          <input type="number" min="1" placeholder="Adet" id="wo-add-qty" style="max-width:80px;">
-          <button class="btn secondary" id="wo-add-btn" style="max-width:70px;">Ekle</button>
-        </div>
-        <div id="wo-picked-list" style="margin:6px 0;"></div>
-        <div class="err" id="wo-err"></div>
-        <button class="btn" id="wo-submit" style="width:100%; margin-top:10px; background:var(--red); color:#fff;">Düşüşü Kaydet</button>
-        <button class="btn secondary" id="wo-cancel" style="width:100%; margin-top:8px;">Vazgeç</button>
-      </div>
     ` : `
       <div style="display:flex; gap:10px; margin-top:16px;">
         <button class="btn secondary" id="new-collection-btn" style="flex:1;">+ Yeni Tahsilat Kaydı</button>
         <button class="btn secondary" id="shop-return-btn" style="flex:1;">İade Al</button>
       </div>
-      <button class="btn secondary" id="shop-writeoff-btn" style="width:100%; margin-top:10px; color:var(--red); border-color:var(--red);">Kayıp/Hasar Düş</button>
     `}
 
     <div class="section-title" style="font-size:16px; margin-top:24px;">Tahsilat Geçmişi</div>
@@ -1535,7 +1515,7 @@ function renderShopDetail(content, shopId){
       }
     });
   });
-  document.getElementById("shop-back").addEventListener("click", ()=>{ state.selectedShopId = null; state.showCollectForm = false; state.showShopReturnForm = false; state.showWriteOffForm = false; render(); });
+  document.getElementById("shop-back").addEventListener("click", ()=>{ state.selectedShopId = null; state.showCollectForm = false; state.showShopReturnForm = false; render(); });
 
   const openBtn = document.getElementById("new-collection-btn");
   if (openBtn) openBtn.addEventListener("click", ()=>{ state.showCollectForm = true; render(); });
@@ -1628,82 +1608,6 @@ function renderShopDetail(content, shopId){
       console.error(e);
       errEl.textContent = "İade kaydedilemedi, tekrar dene.";
       srSubmitBtn.disabled = false; srSubmitBtn.textContent = "İadeyi Kaydet";
-    }
-  });
-
-  const woOpenBtn = document.getElementById("shop-writeoff-btn");
-  if (woOpenBtn) woOpenBtn.addEventListener("click", ()=>{ state.showWriteOffForm = true; state.writeOffPicks = []; render(); });
-
-  const woCancelBtn = document.getElementById("wo-cancel");
-  if (woCancelBtn) woCancelBtn.addEventListener("click", ()=>{ state.showWriteOffForm = false; state.writeOffPicks = []; render(); });
-
-  if (state.showWriteOffForm){
-    const woListEl = document.getElementById("wo-picked-list");
-    if (woListEl){
-      woListEl.innerHTML = state.writeOffPicks.map((p,i)=>`
-        <div class="collect-row">
-          <div class="stock-info">
-            <div class="stock-kod">${p.kod}</div>
-            <div class="stock-name">${p.isim}</div>
-          </div>
-          <div style="font-family:'JetBrains Mono'; font-size:13px;">${p.qty} adet</div>
-          <button class="del-btn" data-idx="${i}">✕</button>
-        </div>
-      `).join("");
-      woListEl.querySelectorAll(".del-btn").forEach(btn=>{
-        btn.addEventListener("click", ()=>{ state.writeOffPicks.splice(parseInt(btn.dataset.idx,10),1); render(); });
-      });
-    }
-    const woAddBtn = document.getElementById("wo-add-btn");
-    if (woAddBtn) woAddBtn.addEventListener("click", ()=>{
-      const sel = document.getElementById("wo-product-select");
-      const errEl = document.getElementById("wo-err");
-      errEl.textContent = "";
-      if (!sel.value){ errEl.textContent = "Bir ürün seç."; return; }
-      let qty = parseInt(document.getElementById("wo-add-qty").value, 10);
-      if (isNaN(qty) || qty <= 0){ errEl.textContent = "Geçerli bir adet gir."; return; }
-      state.writeOffPicks.push({ kod: sel.value, isim: sel.selectedOptions[0].dataset.isim, qty });
-      render();
-    });
-  }
-
-  const woSubmitBtn = document.getElementById("wo-submit");
-  if (woSubmitBtn) woSubmitBtn.addEventListener("click", async ()=>{
-    const errEl = document.getElementById("wo-err");
-    errEl.textContent = "";
-    const toWriteOff = state.writeOffPicks;
-    if (toWriteOff.length === 0){ errEl.textContent = "En az bir ürün seçip ekle."; return; }
-    woSubmitBtn.disabled = true; woSubmitBtn.textContent = "Kaydediliyor...";
-    try{
-      for (const r of toWriteOff){
-        let remaining = r.qty;
-        const shopOrders = state.orders
-          .filter(o => o.shopId === shopId && statusOf(o) === "Teslim Edildi")
-          .sort((a,b)=>{
-            const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
-            const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
-            return ta - tb;
-          });
-        for (const o of shopOrders){
-          if (remaining <= 0) break;
-          const items = o.items || [];
-          const idx = items.findIndex(it => it.kod === r.kod && it.qty > 0);
-          if (idx === -1) continue;
-          const take = Math.min(remaining, items[idx].qty);
-          const newItems = items.map((it,i)=> i===idx ? { ...it, qty: it.qty - take, lost: (it.lost||0) + take } : it);
-          await updateDoc(doc(db, "orders", o.id), { items: newItems });
-          o.items = newItems;
-          remaining -= take;
-        }
-      }
-      toast("Dükkandan düşüldü (stoğa eklenmedi)");
-      state.showWriteOffForm = false;
-      state.writeOffPicks = [];
-      render();
-    }catch(e){
-      console.error(e);
-      errEl.textContent = "Kaydedilemedi, tekrar dene.";
-      woSubmitBtn.disabled = false; woSubmitBtn.textContent = "Düşüşü Kaydet";
     }
   });
 
