@@ -1059,6 +1059,8 @@ const SEED_FILAMENTS = [
   {marka:"porima", tur:"TPU", renk:"Bamboo Green", adet:1, cap:"1.75 mm"},
 ];
 
+function fmtKg(v){ return String(Math.round((v||0)*1000)/1000); }
+
 function renderFilaments(content){
   if (state.loadingFilaments){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
 
@@ -1087,6 +1089,10 @@ function renderFilaments(content){
 
   content.innerHTML = `
     <div class="section-title">Filament Stoğu</div>
+    <div class="summary-row" style="border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:10px;">
+      <div class="summary-name" style="font-family:'Indie Flower'; font-size:20px;">${(activeBrand!=='Tümü' || activeType!=='Tümü') ? 'Seçili Filtrede Toplam' : 'Toplam Filament'}</div>
+      <div class="summary-count" style="width:auto; font-size:18px; color:var(--green);">${fmtKg(shown.reduce((a,f)=>a+(f.adet||0),0))} kg</div>
+    </div>
     ${state.filaments.length===0 ? `<button class="seed-btn" id="seed-fil-btn">İlk filament listesini yükle (${SEED_FILAMENTS.length} kalem)</button>` : (hasDuplicates ? `<button class="seed-btn" id="dedupe-fil-btn">Yinelenenleri Temizle</button>` : "")}
     <div class="catalog-form">
       <div class="form-row">
@@ -1095,7 +1101,7 @@ function renderFilaments(content){
       </div>
       <div class="form-row">
         <input id="new-fil-renk" placeholder="Renk">
-        <input id="new-fil-adet" type="number" min="0" placeholder="Adet" style="max-width:70px;">
+        <input id="new-fil-adet" type="number" min="0" step="0.01" placeholder="Kg" style="max-width:70px;">
         <input id="new-fil-cap" placeholder="Çap" value="1.75 mm" style="max-width:90px;">
       </div>
       <button class="btn secondary" id="add-fil-btn" style="width:100%;">+ Filament Ekle</button>
@@ -1121,7 +1127,8 @@ function renderFilaments(content){
               ${f.renk}
             </div>
           </div>
-          <input class="stock-input ${(f.adet||0)===0 ? 'low' : ''}" type="number" min="0" data-id="${f.id}" value="${f.adet||0}">
+          <input class="stock-input ${(f.adet||0) <= 0.25 ? 'low' : ''}" type="number" min="0" step="0.01" data-id="${f.id}" value="${fmtKg(f.adet)}">
+          <span style="font-family:'JetBrains Mono'; font-size:11px; color:var(--ink-dim);">kg</span>
           <button class="del-btn" data-id="${f.id}" data-name="${f.renk}">✕</button>
         </div>
       `).join("")}
@@ -1187,8 +1194,9 @@ function renderFilaments(content){
     const tur = document.getElementById("new-fil-tur").value.trim();
     const renk = document.getElementById("new-fil-renk").value.trim();
     const cap = document.getElementById("new-fil-cap").value.trim() || "1.75 mm";
-    let adet = parseInt(document.getElementById("new-fil-adet").value, 10);
+    let adet = parseFloat(document.getElementById("new-fil-adet").value);
     if (isNaN(adet) || adet < 0) adet = 0;
+    adet = Math.round(adet*1000)/1000;
     if (!renk || !tur){ toast("Tür ve renk gerekli"); return; }
     try{
       const ref = doc(collection(db, "filaments"));
@@ -1199,8 +1207,9 @@ function renderFilaments(content){
   });
   content.querySelectorAll(".stock-input").forEach(inp=>{
     inp.addEventListener("change", async ()=>{
-      let val = parseInt(inp.value,10); if (isNaN(val)||val<0) val = 0;
-      inp.value = val;
+      let val = parseFloat(inp.value); if (isNaN(val)||val<0) val = 0;
+      val = Math.round(val*1000)/1000;
+      inp.value = fmtKg(val);
       try{ await updateDoc(doc(db, "filaments", inp.dataset.id), { adet: val }); toast("Güncellendi"); }
       catch(e){ toast("Güncellenemedi"); }
     });
