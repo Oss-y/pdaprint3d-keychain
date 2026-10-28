@@ -304,6 +304,8 @@ let state = {
   chartYear: null,
   reportMonth: null,
   expenses: [],
+  productions: [],
+  loadingProductions: true,
   loadingExpenses: true,
   expensePicks: [],
   newExpenseCategory: "Filament",
@@ -316,7 +318,7 @@ let state = {
 };
 
 const root = document.getElementById("app");
-let unsubOrders = null, unsubProducts = null, unsubFilaments = null, unsubSettings = null, unsubShops = null, unsubCollections = null, unsubExpenses = null;
+let unsubOrders = null, unsubProducts = null, unsubFilaments = null, unsubSettings = null, unsubShops = null, unsubCollections = null, unsubExpenses = null, unsubProductions = null;
 
 function toast(msg){
   const t = document.createElement("div");
@@ -354,7 +356,8 @@ onAuthStateChanged(auth, async (user)=>{
     if (unsubShops) unsubShops();
     if (unsubCollections) unsubCollections();
     if (unsubExpenses) unsubExpenses();
-    state.orders = []; state.products = []; state.filaments = []; state.shops = []; state.shopCollections = []; state.expenses = [];
+    if (unsubProductions) unsubProductions();
+    state.orders = []; state.products = []; state.filaments = []; state.shops = []; state.shopCollections = []; state.expenses = []; state.productions = [];
   }
   render();
 });
@@ -414,6 +417,14 @@ function startListeners(){
     state.loadingExpenses = false;
     render();
   }, err=>{ console.error(err); state.loadingExpenses = false; render(); });
+
+  state.loadingProductions = true;
+  const productionsQ = query(collection(db, "productions"), orderBy("createdAt", "desc"));
+  unsubProductions = onSnapshot(productionsQ, snap=>{
+    state.productions = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    state.loadingProductions = false;
+    render();
+  }, err=>{ console.error(err); state.loadingProductions = false; render(); });
 }
 
 /* ================= RENDER: LOGIN ================= */
@@ -455,6 +466,7 @@ function renderShell(){
     {key:"expenses", label:"Gider"},
     {key:"pnl", label:"Gelir-Gider"},
     {key:"stock", label:"Stok"},
+    {key:"production", label:"Üretim"},
     {key:"employees", label:"Çalışanlar"},
   ];
   root.innerHTML = `
@@ -478,6 +490,7 @@ function renderShell(){
   else if (state.tab === "sales") renderSales(content);
   else if (state.tab === "expenses") renderExpenses(content);
   else if (state.tab === "pnl") renderPnl(content);
+  else if (state.tab === "production") renderProduction(content);
   else if (state.tab === "employees") renderEmployees(content);
 }
 
@@ -1772,6 +1785,98 @@ function renderExpenses(content){
       if (!confirm("Bu gider silinsin mi?")) return;
       try{ await deleteDoc(doc(db, "expenses", btn.dataset.id)); toast("Gider silindi"); }
       catch(e){ toast("Silinemedi"); }
+    });
+  });
+}
+
+/* ================= TAB: PRODUCTION (ÜRETİM) ================= */
+function renderProduction(content){
+  if (state.loadingProductions || state.loadingProducts){ content.innerHTML = `<div class="spinner">Yükleniyor...</div>`; return; }
+  content.innerHTML = `
+    <div class="section-title">Yeni Basım Kaydı</div>
+    <div class="catalog-form">
+      <div class="form-row">
+        <select id="prod-product" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px; color:var(--ink); font-size:16px;">
+          <option value="">Ürün seç...</option>
+          ${state.products.map(p=>`<option value="${p.kod}" data-isim="${p.isim}">${p.isim}</option>`).join("")}
+        </select>
+      </div>
+      <div class="form-row">
+        <input id="prod-printed" type="number" min="1" placeholder="Basılan adet">
+        <input id="prod-waste" type="number" min="0" placeholder="Zaiyat (bozuk) adet">
+      </div>
+      <div style="font-size:11.5px; color:var(--ink-dim); margin:-4px 0 8px;">Sağlam olanlar (basılan − zaiyat) Ürün Stok'a otomatik eklenir.</div>
+      <div class="err" id="prod-err"></div>
+      <button class="btn" id="prod-submit" style="width:100%;">Basımı Kaydet</button>
+    </div>
+
+    <div class="section-title" style="margin-top:22px;">Basım Geçmişi</div>
+    ${state.productions.length===0 ? `<div class="empty-msg">Henüz basım kaydı yok.</div>` : state.productions.map(r=>{
+      const dt = r.createdAt && r.createdAt.toDate ? r.createdAt.toDate() : new Date();
+      const good = (r.printed||0) - (r.waste||0);
+      return `
+        <div class="order-card st-teslim">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px;">
+            <div>
+              <div class="order-emp" style="font-size:17px;">${r.isim}</div>
+              <div class="order-date">${dt.toLocaleString('tr-TR')}</div>
+            </div>
+            <button class="del-btn undo-prod-btn" data-id="${r.id}">✕</button>
+          </div>
+          <div style="font-family:'JetBrains Mono'; font-size:12px; line-height:1.8;">
+            Basılan: <b>${r.printed||0}</b> · Zaiyat: <b style="color:var(--red);">${r.waste||0}</b> · Stoğa eklenen: <b style="color:var(--green);">${good}</b>
+          </div>
+        </div>`;
+    }).join("")}
+  `;
+
+  document.getElementById("prod-submit").addEventListener("click", async ()=>{
+    const errEl = document.getElementById("prod-err");
+    errEl.textContent = "";
+    const sel = document.getElementById("prod-product");
+    if (!sel.value){ errEl.textContent = "Bir ürün seç."; return; }
+    let printed = parseInt(document.getElementById("prod-printed").value, 10);
+    let waste = parseInt(document.getElementById("prod-waste").value, 10);
+    if (isNaN(printed) || printed <= 0){ errEl.textContent = "Geçerli bir basılan adet gir."; return; }
+    if (isNaN(waste) || waste < 0) waste = 0;
+    if (waste > printed){ errEl.textContent = "Zaiyat, basılan adetten fazla olamaz."; return; }
+    const kod = sel.value, isim = sel.selectedOptions[0].dataset.isim;
+    const good = printed - waste;
+
+    const btn = document.getElementById("prod-submit");
+    btn.disabled = true; btn.textContent = "Kaydediliyor...";
+    try{
+      await addDoc(collection(db, "productions"), { kod, isim, printed, waste, createdAt: serverTimestamp() });
+      if (good > 0){
+        const ref = doc(db, "products", kod);
+        const snap = await getDoc(ref);
+        const cur = snap.exists() ? (snap.data().stok || 0) : 0;
+        await updateDoc(ref, { stok: cur + good });
+      }
+      toast(`Kaydedildi — ${good} adet stoğa eklendi`);
+    }catch(e){
+      console.error(e);
+      errEl.textContent = "Kaydedilemedi, tekrar dene.";
+      btn.disabled = false; btn.textContent = "Basımı Kaydet";
+    }
+  });
+
+  content.querySelectorAll(".undo-prod-btn").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const rec = state.productions.find(r=>r.id===btn.dataset.id);
+      if (!rec) return;
+      if (!confirm("Bu basım kaydı silinsin mi? Stoğa eklenen adet geri düşülecek.")) return;
+      try{
+        const good = (rec.printed||0) - (rec.waste||0);
+        if (good > 0){
+          const ref = doc(db, "products", rec.kod);
+          const snap = await getDoc(ref);
+          const cur = snap.exists() ? (snap.data().stok || 0) : 0;
+          await updateDoc(ref, { stok: Math.max(0, cur - good) });
+        }
+        await deleteDoc(doc(db, "productions", rec.id));
+        toast("Basım kaydı silindi");
+      }catch(e){ console.error(e); toast("Silinemedi"); }
     });
   });
 }
