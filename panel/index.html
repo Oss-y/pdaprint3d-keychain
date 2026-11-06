@@ -1106,7 +1106,7 @@ function renderFilaments(content){
     <div class="section-title">Filament Stoğu</div>
     <div class="summary-row" style="border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:10px;">
       <div class="summary-name" style="font-family:'Indie Flower'; font-size:20px;">${(activeBrand!=='Tümü' || activeType!=='Tümü') ? 'Seçili Filtrede Toplam' : 'Toplam Filament'}</div>
-      <div class="summary-count" style="width:auto; font-size:18px; color:var(--green);">${fmtKg(shown.reduce((a,f)=>a+(f.adet||0),0))} kg</div>
+      <div class="summary-count" style="width:auto; font-size:18px; color:var(--green);">${Math.round(shown.reduce((a,f)=>a+(f.adet||0),0)*1000).toLocaleString('tr-TR')} gr</div>
     </div>
     ${state.filaments.length===0 ? `<button class="seed-btn" id="seed-fil-btn">İlk filament listesini yükle (${SEED_FILAMENTS.length} kalem)</button>` : (hasDuplicates ? `<button class="seed-btn" id="dedupe-fil-btn">Yinelenenleri Temizle</button>` : "")}
     <div class="catalog-form">
@@ -1116,7 +1116,7 @@ function renderFilaments(content){
       </div>
       <div class="form-row">
         <input id="new-fil-renk" placeholder="Renk">
-        <input id="new-fil-adet" type="number" min="0" step="0.01" placeholder="Kg" style="max-width:70px;">
+        <input id="new-fil-adet" type="number" min="0" step="1" placeholder="Gram" style="max-width:90px;">
         <input id="new-fil-cap" placeholder="Çap" value="1.75 mm" style="max-width:90px;">
       </div>
       <button class="btn secondary" id="add-fil-btn" style="width:100%;">+ Filament Ekle</button>
@@ -1142,8 +1142,8 @@ function renderFilaments(content){
               ${f.renk}
             </div>
           </div>
-          <input class="stock-input ${(f.adet||0) <= 0.25 ? 'low' : ''}" type="number" min="0" step="0.01" data-id="${f.id}" value="${fmtKg(f.adet)}">
-          <span style="font-family:'JetBrains Mono'; font-size:11px; color:var(--ink-dim);">kg</span>
+          <input class="stock-input ${(f.adet||0) <= 0.25 ? 'low' : ''}" type="number" min="0" step="1" data-id="${f.id}" value="${Math.round((f.adet||0)*1000)}" style="width:84px;">
+          <span style="font-family:'JetBrains Mono'; font-size:11px; color:var(--ink-dim);">gr</span>
           <button class="del-btn" data-id="${f.id}" data-name="${f.renk}">✕</button>
         </div>
       `).join("")}
@@ -1209,9 +1209,9 @@ function renderFilaments(content){
     const tur = document.getElementById("new-fil-tur").value.trim();
     const renk = document.getElementById("new-fil-renk").value.trim();
     const cap = document.getElementById("new-fil-cap").value.trim() || "1.75 mm";
-    let adet = parseFloat(document.getElementById("new-fil-adet").value);
-    if (isNaN(adet) || adet < 0) adet = 0;
-    adet = Math.round(adet*1000)/1000;
+    let gramIn = parseFloat(document.getElementById("new-fil-adet").value);
+    if (isNaN(gramIn) || gramIn < 0) gramIn = 0;
+    const adet = Math.round(gramIn)/1000;
     if (!renk || !tur){ toast("Tür ve renk gerekli"); return; }
     try{
       const ref = doc(collection(db, "filaments"));
@@ -1222,9 +1222,10 @@ function renderFilaments(content){
   });
   content.querySelectorAll(".stock-input").forEach(inp=>{
     inp.addEventListener("change", async ()=>{
-      let val = parseFloat(inp.value); if (isNaN(val)||val<0) val = 0;
-      val = Math.round(val*1000)/1000;
-      inp.value = fmtKg(val);
+      let gr = parseFloat(inp.value); if (isNaN(gr)||gr<0) gr = 0;
+      gr = Math.round(gr);
+      const val = gr/1000;
+      inp.value = gr;
       try{ await updateDoc(doc(db, "filaments", inp.dataset.id), { adet: val }); toast("Güncellendi"); }
       catch(e){ toast("Güncellenemedi"); }
     });
@@ -1818,7 +1819,7 @@ function renderProduction(content){
     <div class="section-title" style="margin-top:22px;">Harcama Özeti</div>
     <div class="summary-row"><div class="summary-name">Toplam Basılan</div><div class="summary-count" style="width:auto;">${totPrinted}</div></div>
     <div class="summary-row"><div class="summary-name">Toplam Zaiyat</div><div class="summary-count" style="width:auto; color:var(--red);">${totWaste} (%${wastePct})</div></div>
-    <div class="summary-row" style="border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:10px;"><div class="summary-name">Toplam Filament Harcaması</div><div class="summary-count" style="width:auto; color:var(--green);">${(totGram/1000).toFixed(2)} kg</div></div>
+    <div class="summary-row" style="border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:10px;"><div class="summary-name">Toplam Filament Harcaması</div><div class="summary-count" style="width:auto; color:var(--green);">${Math.round(totGram).toLocaleString('tr-TR')} gr</div></div>
     ${filRows.length ? `
       <div class="section-title" style="font-size:16px; margin-top:14px; margin-bottom:6px;">Filament Bazında</div>
       ${filRows.map(([name,g],i)=>`
@@ -1857,7 +1858,7 @@ function renderProduction(content){
       <div class="form-row">
         <select id="prod-fil-select" style="flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px; color:var(--ink); font-size:16px;">
           <option value="">Filament seç...</option>
-          ${sortedFil.map(f=>`<option value="${f.id}" data-name="${filLabel(f)}">${filLabel(f)} (${fmtKg(f.adet)} kg)</option>`).join("")}
+          ${sortedFil.map(f=>`<option value="${f.id}" data-name="${filLabel(f)}">${filLabel(f)} (${Math.round((f.adet||0)*1000)} gr)</option>`).join("")}
         </select>
         <input type="number" min="1" placeholder="Gram" id="prod-fil-gram" style="max-width:90px;">
         <button class="btn secondary" id="prod-fil-add" style="max-width:70px;">Ekle</button>
